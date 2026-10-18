@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "file-organizer"
+version = "1.1.0"
+description = "Windows 桌面文件整理工具：批量重命名、分类整理、查找重复与相似文件"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "a87150" }]
+keywords = ["file-organizer", "rename", "dedupe", "duplicate-finder", "tkinter", "windows"]
+classifiers = [
+    "Environment :: Win32 (MS Windows)",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Topic :: Desktop Environment :: File Managers",
+    "Topic :: Utilities",
+]
+urls = { Repository = "https://github.com/a87150/File-Organizer" }
+
+[tool.setuptools]
+packages = ["file_organizer"]
