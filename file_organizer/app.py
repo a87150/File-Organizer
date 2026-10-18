@@ -33,6 +33,7 @@ from .theme import (
 )
 from .utils import format_size
 from .widgets import (  # noqa: F401  (部分供各页签构建时使用)
+    FIELD_HEIGHT,
     RoundedButton,
     RoundedPanel,
     TabHost,
@@ -84,10 +85,10 @@ class FileOrganizerApp(RenameTabMixin, OrganizeTabMixin, DuplicatesTabMixin, His
         chooser = chooser_panel.inner
         label(chooser, "工作目录").pack(side="left", padx=(0, 10))
         entry(chooser, textvariable=self.folder_var).pack(side="left", fill="x", expand=True)
-        RoundedButton(chooser, text="浏览…", variant="secondary", padx=14, pady=7, command=self._choose_folder).pack(side="left", padx=(8, 0))
+        RoundedButton(chooser, text="浏览…", variant="secondary", padx=14, pady=7, height=FIELD_HEIGHT, command=self._choose_folder).pack(side="left", padx=(8, 0))
         checkbox(chooser, "包含子文件夹", self.recursive_var).pack(side="left", padx=10)
         checkbox(chooser, "包含隐藏文件", self.hidden_var).pack(side="left")
-        self.scan_button = RoundedButton(chooser, text="扫描文件", variant="primary", padx=18, pady=7, command=self._scan)
+        self.scan_button = RoundedButton(chooser, text="扫描文件", variant="primary", padx=18, pady=7, height=FIELD_HEIGHT, command=self._scan)
         self.scan_button.pack(side="left", padx=(10, 0))
 
         body = ttk.Panedwindow(root, orient="horizontal")

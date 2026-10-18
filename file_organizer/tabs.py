@@ -10,6 +10,7 @@ from .core import CleanupOptions, OrganizeOptions, RenameOptions, SearchOptions,
 from .duplicates import DuplicateOptions, DuplicateResult, order_group_members
 from .utils import format_size
 from .widgets import (
+    FIELD_HEIGHT,
     MultiSelectDropdown,
     RoundedButton,
     TabHost,
@@ -273,7 +274,7 @@ class DuplicatesTabMixin:
         type_row.pack(fill="x")
         self.dup_type_picker = MultiSelectDropdown(type_row)
         self.dup_type_picker.pack(side="left", fill="x", expand=True)
-        RoundedButton(type_row, text="只选视频", variant="secondary", padx=12, pady=7, command=self._select_video_types).pack(side="left", padx=(6, 0))
+        RoundedButton(type_row, text="只选视频", variant="secondary", padx=12, pady=7, height=FIELD_HEIGHT, command=self._select_video_types).pack(side="left", padx=(6, 0))
 
         min_row = ctk.CTkFrame(find_box, corner_radius=0, fg_color="transparent")
         min_row.pack(fill="x", pady=(6, 0))

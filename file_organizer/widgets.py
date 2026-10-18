@@ -50,15 +50,19 @@ def RoundedButton(
     font=None,
     padx: int = 16,
     pady: int = 8,
+    height: int | None = None,
     radius: int = 10,
     align: str = "center",
     surface: str = CARD_BG,
     state: str = "normal",
 ) -> ctk.CTkButton:
-    """统一风格的圆角按钮（CustomTkinter 自带抗锯齿圆角）。"""
+    """统一风格的圆角按钮（CustomTkinter 自带抗锯齿圆角）。
+
+    ``height`` 显式给定时优先使用，方便与输入框/下拉框保持同一高度。
+    """
     palette = BUTTON_VARIANTS.get(variant, BUTTON_VARIANTS["secondary"])
     text_font = font if isinstance(font, ctk.CTkFont) else ui_font(12)
-    height = int(text_font.metrics("linespace")) + pady * 2
+    computed_height = int(text_font.metrics("linespace")) + pady * 2
     width = int(text_font.measure(text)) + padx * 2
     return ctk.CTkButton(
         master,
@@ -66,7 +70,7 @@ def RoundedButton(
         command=command,
         font=text_font,
         width=max(width, 44),
-        height=max(height, 28),
+        height=max(height or computed_height, 28),
         corner_radius=radius,
         fg_color=palette["fill"],
         hover_color=palette["hover"],
@@ -112,12 +116,17 @@ def _merge(defaults: dict, width, kwargs: dict) -> dict:
     return options
 
 
+# 所有输入/选择控件共用同一套尺寸，保证各页签观感一致。
+FIELD_HEIGHT = 30
+FIELD_RADIUS = 8
+
+
 def entry(master, *, textvariable=None, width=None, **kwargs) -> ctk.CTkEntry:
     """统一样式的输入框；``width`` 传大约的字符数，会自动换算成像素。"""
     options = _merge(
         {
-            "corner_radius": 8,
-            "height": 30,
+            "corner_radius": FIELD_RADIUS,
+            "height": FIELD_HEIGHT,
             "border_width": 1,
             "border_color": FIELD_BORDER,
             "fg_color": CARD_BG,
@@ -131,11 +140,14 @@ def entry(master, *, textvariable=None, width=None, **kwargs) -> ctk.CTkEntry:
 
 
 def combo(master, *, variable=None, values=(), width=None, **kwargs) -> ctk.CTkComboBox:
-    """统一样式的下拉选择框（只读，可选择但不可输入）。"""
+    """统一样式的下拉选择框（只读，可选择但不可输入）。
+
+    默认只有右侧箭头响应点击，这里让整个控件都可点击展开。
+    """
     options = _merge(
         {
-            "corner_radius": 8,
-            "height": 30,
+            "corner_radius": FIELD_RADIUS,
+            "height": FIELD_HEIGHT,
             "border_width": 1,
             "border_color": FIELD_BORDER,
             "fg_color": CARD_BG,
@@ -151,7 +163,22 @@ def combo(master, *, variable=None, values=(), width=None, **kwargs) -> ctk.CTkC
         width,
         kwargs,
     )
-    return ctk.CTkComboBox(master, variable=variable, values=list(values), state="readonly", **options)
+    widget = ctk.CTkComboBox(master, variable=variable, values=list(values), state="readonly", **options)
+    bind_combo_toggle(widget)
+    return widget
+
+
+def bind_combo_toggle(widget: ctk.CTkComboBox) -> None:
+    """让下拉框整块可点击：单击文字区域同样展开/收起列表。"""
+
+    def toggle(_event=None):
+        menu = widget._dropdown_menu
+        if menu.is_open():
+            menu.close()
+        elif widget.cget("state") != "disabled":
+            widget._open_dropdown_menu()
+
+    widget.bind("<Button-1>", toggle)
 
 
 def checkbox(master, text: str, variable, **kwargs) -> ctk.CTkCheckBox:
@@ -345,7 +372,17 @@ class MultiSelectDropdown(ctk.CTkFrame):
         self.popup: ctk.CTkToplevel | None = None
         self._rows: list[tuple[tk.BooleanVar, str]] = []
         self._list: ctk.CTkScrollableFrame | None = None
-        self.button = RoundedButton(self, text="请先扫描文件", variant="picker", align="w", padx=12, pady=8, command=self._open)
+        self.button = RoundedButton(
+            self,
+            text="请先扫描文件",
+            variant="picker",
+            align="w",
+            padx=12,
+            pady=0,
+            height=FIELD_HEIGHT,
+            radius=FIELD_RADIUS,
+            command=self._open,
+        )
         self.button.pack(fill="x", expand=True)
 
     # ------------------------------------------------------------- 外部接口
