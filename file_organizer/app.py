@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import queue
+import sys
 import threading
 import tkinter as tk
 from collections import Counter
@@ -17,9 +18,9 @@ from .core import (
 )
 from .duplicates import OperationCancelled
 from .tabs import DuplicatesTabMixin, HistoryTabMixin, OrganizeTabMixin, RenameTabMixin
-from .theme import configure_styles
+from .theme import APP_BG, BORDER, FONT_FAMILY, TEXT_PRIMARY, configure_styles
 from .utils import format_size
-from .widgets import MultiSelectDropdown  # noqa: F401  (供各页签构建时使用)
+from .widgets import MultiSelectDropdown, RoundedButton, RoundedPanel, TabHost  # noqa: F401  (供各页签构建时使用)
 
 TREE_CHUNK_SIZE = 500
 MAX_PREVIEW_ROWS = 20000
@@ -47,34 +48,39 @@ class FileOrganizerApp(RenameTabMixin, OrganizeTabMixin, DuplicatesTabMixin, His
         self.hidden_var = tk.BooleanVar(value=False)
         self.status_var = tk.StringVar(value="请选择文件夹后扫描")
         self._build_ui()
+        self.update_idletasks()
+        self._apply_window_frame()
         self.after(100, self._poll_events)
 
     def _build_ui(self) -> None:
         configure_styles(self)
-        self.configure(bg="#F4F7FB")
+        self.configure(bg=APP_BG)
         root = ttk.Frame(self, padding=18, style="App.TFrame")
         root.pack(fill="both", expand=True)
 
         header = ttk.Frame(root, style="App.TFrame")
-        header.pack(fill="x", pady=(0, 14))
-        ttk.Label(header, text="文件夹整理工具", style="Title.TLabel").pack(anchor="w")
-        ttk.Label(header, text="先筛选和预览，再安全地批量重命名、分类或清理重复文件", style="Subtitle.TLabel").pack(anchor="w", pady=(3, 0))
+        header.pack(fill="x", pady=(0, 12))
+        ttk.Label(header, text="先筛选和预览，再安全地批量重命名、分类或清理重复文件。", style="Subtitle.TLabel").pack(anchor="w")
 
-        chooser = ttk.Frame(root, padding=12, style="Card.TFrame")
-        chooser.pack(fill="x")
+        chooser_panel = RoundedPanel(root, padding=(12, 10))
+        chooser_panel.pack(fill="x")
+        chooser = chooser_panel.inner
         ttk.Label(chooser, text="工作目录", style="Section.TLabel").pack(side="left", padx=(0, 10))
         ttk.Entry(chooser, textvariable=self.folder_var, style="Modern.TEntry").pack(side="left", fill="x", expand=True, ipady=3)
-        ttk.Button(chooser, text="浏览…", command=self._choose_folder).pack(side="left", padx=(8, 0))
+        RoundedButton(chooser, text="浏览…", variant="secondary", padx=14, pady=7, command=self._choose_folder).pack(side="left", padx=(8, 0))
         ttk.Checkbutton(chooser, text="包含子文件夹", variable=self.recursive_var).pack(side="left", padx=10)
         ttk.Checkbutton(chooser, text="包含隐藏文件", variable=self.hidden_var).pack(side="left")
-        self.scan_button = ttk.Button(chooser, text="扫描文件", style="Primary.TButton", command=self._scan)
+        self.scan_button = RoundedButton(chooser, text="扫描文件", variant="primary", padx=18, pady=7, command=self._scan)
         self.scan_button.pack(side="left", padx=(10, 0))
 
         body = ttk.Panedwindow(root, orient="horizontal")
-        body.pack(fill="both", expand=True, pady=10)
+        body.pack(fill="both", expand=True, pady=12)
 
-        controls = ttk.Frame(body, padding=(0, 0, 10, 0), style="App.TFrame")
-        body.add(controls, weight=1)
+        left_wrap = ttk.Frame(body, style="App.TFrame", padding=(0, 0, 3, 0))
+        body.add(left_wrap, weight=1)
+        left_panel = RoundedPanel(left_wrap, padding=(2, 2))
+        left_panel.pack(fill="both", expand=True)
+        controls = left_panel.inner
         controls.columnconfigure(0, weight=1)
         controls.rowconfigure(0, weight=1)
         control_canvas = tk.Canvas(controls, background="#FFFFFF", borderwidth=0, highlightthickness=0)
@@ -84,30 +90,52 @@ class FileOrganizerApp(RenameTabMixin, OrganizeTabMixin, DuplicatesTabMixin, His
         control_scrollbar.grid(row=0, column=1, sticky="ns")
         control_content = ttk.Frame(control_canvas)
         control_window = control_canvas.create_window((0, 0), window=control_content, anchor="nw")
-        control_content.bind("<Configure>", lambda _event: control_canvas.configure(scrollregion=control_canvas.bbox("all")))
-        control_canvas.bind("<Configure>", lambda event: control_canvas.itemconfigure(control_window, width=event.width))
+
+        def refresh_scrollregion(_event=None) -> None:
+            bounds = control_canvas.bbox("all")
+            if bounds is None:
+                return
+            control_canvas.configure(
+                scrollregion=(
+                    0,
+                    0,
+                    max(bounds[2], control_canvas.winfo_width()),
+                    max(bounds[3], control_canvas.winfo_height()),
+                )
+            )
+
+        def resize_control_window(event) -> None:
+            control_canvas.itemconfigure(control_window, width=event.width)
+            refresh_scrollregion()
+
+        control_content.bind("<Configure>", refresh_scrollregion)
+        control_canvas.bind("<Configure>", resize_control_window)
         self.bind_all("<MouseWheel>", lambda event: self._scroll_left_panel(event, control_canvas), add="+")
 
-        notebook = ttk.Notebook(control_content)
-        notebook.pack(fill="both", expand=True)
-        self._build_rename_tab(notebook)
-        self._build_organize_tab(notebook)
-        self._build_duplicates_tab(notebook)
-        self._build_history_tab(notebook)
+        self.tab_host = TabHost(control_content)
+        self.tab_host.pack(fill="both", expand=True)
+        self._build_rename_tab(self.tab_host)
+        self._build_organize_tab(self.tab_host)
+        self._build_duplicates_tab(self.tab_host)
+        self._build_history_tab(self.tab_host)
 
-        preview = ttk.LabelFrame(body, text="文件与操作预览", padding=10, style="Card.TLabelframe")
-        body.add(preview, weight=3)
+        preview_wrap = ttk.Frame(body, style="App.TFrame", padding=(3, 0, 0, 0))
+        body.add(preview_wrap, weight=3)
+        preview_panel = RoundedPanel(preview_wrap, padding=(12, 10))
+        preview_panel.pack(fill="both", expand=True)
+        preview = preview_panel.inner
+        ttk.Label(preview, text="文件与操作预览", style="Section.TLabel").grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 8))
         columns = ("status", "source", "destination", "size")
         self.tree = ttk.Treeview(preview, columns=columns, show="headings", selectmode="extended")
-        self.tree.tag_configure("match", foreground="#1D4ED8")
-        self.tree.tag_configure("success", foreground="#047857")
-        self.tree.tag_configure("failed", foreground="#B91C1C")
-        self.tree.tag_configure("pending", foreground="#475569")
-        self.tree.tag_configure("dup-hash", foreground="#047857", font=("Microsoft YaHei UI", 10, "bold"))
-        self.tree.tag_configure("dup-size", foreground="#B45309", font=("Microsoft YaHei UI", 10, "bold"))
-        self.tree.tag_configure("dup-name", foreground="#1D4ED8", font=("Microsoft YaHei UI", 10, "bold"))
-        self.tree.tag_configure("keep", foreground="#047857")
-        self.tree.tag_configure("candidate", foreground="#B45309")
+        self.tree.tag_configure("match", foreground="#0071E3")
+        self.tree.tag_configure("success", foreground="#248A3D")
+        self.tree.tag_configure("failed", foreground="#D70015")
+        self.tree.tag_configure("pending", foreground="#6E6E73")
+        self.tree.tag_configure("dup-hash", foreground="#248A3D", font=(FONT_FAMILY, 10, "bold"))
+        self.tree.tag_configure("dup-size", foreground="#B25000", font=(FONT_FAMILY, 10, "bold"))
+        self.tree.tag_configure("dup-name", foreground="#0071E3", font=(FONT_FAMILY, 10, "bold"))
+        self.tree.tag_configure("keep", foreground="#248A3D")
+        self.tree.tag_configure("candidate", foreground="#B25000")
         headings = {"status": "状态", "source": "原文件", "destination": "目标位置", "size": "大小"}
         widths = {"status": 70, "source": 280, "destination": 330, "size": 90}
         for col in columns:
@@ -116,21 +144,46 @@ class FileOrganizerApp(RenameTabMixin, OrganizeTabMixin, DuplicatesTabMixin, His
         ybar = ttk.Scrollbar(preview, orient="vertical", command=self.tree.yview)
         xbar = ttk.Scrollbar(preview, orient="horizontal", command=self.tree.xview)
         self.tree.configure(yscrollcommand=ybar.set, xscrollcommand=xbar.set)
-        self.tree.grid(row=0, column=0, sticky="nsew")
-        ybar.grid(row=0, column=1, sticky="ns")
-        xbar.grid(row=1, column=0, sticky="ew")
-        preview.rowconfigure(0, weight=1)
+        self.tree.grid(row=1, column=0, sticky="nsew")
+        ybar.grid(row=1, column=1, sticky="ns")
+        xbar.grid(row=2, column=0, sticky="ew")
+        preview.rowconfigure(1, weight=1)
         preview.columnconfigure(0, weight=1)
 
-        bottom = ttk.Frame(root, padding=(12, 9), style="Status.TFrame")
-        bottom.pack(fill="x")
+        bottom_panel = RoundedPanel(root, padding=(14, 10))
+        bottom_panel.pack(fill="x")
+        bottom = bottom_panel.inner
         ttk.Label(bottom, text="●", style="StatusDot.TLabel").pack(side="left", padx=(0, 7))
         ttk.Label(bottom, textvariable=self.status_var, style="Status.TLabel").pack(side="left")
-        self.progress = ttk.Progressbar(bottom, mode="indeterminate", length=160)
-        self.progress.pack(side="right", padx=(8, 0))
-        self.execute_btn = ttk.Button(bottom, text="执行预览操作", style="Success.TButton", command=self._execute, state="disabled")
-        self.execute_btn.pack(side="right")
-        self.cancel_button = ttk.Button(bottom, text="取消", command=self._cancel_current)
+        right_bar = ttk.Frame(bottom, style="Status.TFrame")
+        right_bar.pack(side="right")
+        self.progress = ttk.Progressbar(right_bar, mode="indeterminate", length=160)
+        self.progress.pack(side="left", padx=(0, 14))
+        self.execute_btn = RoundedButton(right_bar, text="执行预览操作", variant="primary", padx=20, pady=8, command=self._execute, state="disabled")
+        self.execute_btn.pack(side="left")
+        self.cancel_button = RoundedButton(right_bar, text="取消", variant="secondary", padx=16, pady=8, command=self._cancel_current)
+        self._reset_progress()
+
+    def _apply_window_frame(self) -> None:
+        """让系统标题栏与窗口主体同色（Windows 11 支持；其他系统静默忽略）。"""
+        if sys.platform != "win32":
+            return
+        try:
+            import ctypes
+
+            def colorref(hex_color: str) -> int:
+                value = int(hex_color.lstrip("#"), 16)
+                red, green, blue = (value >> 16) & 0xFF, (value >> 8) & 0xFF, value & 0xFF
+                return (blue << 16) | (green << 8) | red
+
+            hwnd = ctypes.windll.user32.GetParent(self.winfo_id())
+            if not hwnd:
+                return
+            for attribute, color in ((35, APP_BG), (36, TEXT_PRIMARY), (34, BORDER)):
+                data = ctypes.c_int(colorref(color))
+                ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, attribute, ctypes.byref(data), ctypes.sizeof(data))
+        except Exception:
+            pass
 
     # ------------------------------------------------------------------ 选择目录
 
@@ -158,7 +211,7 @@ class FileOrganizerApp(RenameTabMixin, OrganizeTabMixin, DuplicatesTabMixin, His
         self.execute_btn.configure(state="disabled")
         if cancellable:
             self.cancel_button.configure(state="normal")
-            self.cancel_button.pack(side="right")
+            self.cancel_button.pack(side="left", padx=(0, 10), before=self.execute_btn)
         else:
             self.cancel_button.pack_forget()
         self.status_var.set(label)
@@ -195,10 +248,14 @@ class FileOrganizerApp(RenameTabMixin, OrganizeTabMixin, DuplicatesTabMixin, His
 
     def _reset_progress(self, start: bool = False) -> None:
         self.progress.stop()
-        self.progress.configure(mode="indeterminate")
         self.progress["value"] = 0
+        self.progress.configure(mode="indeterminate" if start else "determinate")
         if start:
+            if not self.progress.winfo_ismapped():
+                self.progress.pack(side="left", padx=(0, 14), before=self.execute_btn)
             self.progress.start(10)
+        else:
+            self.progress.pack_forget()
 
     def _poll_events(self) -> None:
         try:
