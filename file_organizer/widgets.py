@@ -389,13 +389,14 @@ class RoundedPanel(ctk.CTkFrame):
 class MultiSelectDropdown(ctk.CTkFrame):
     """多选文件类型下拉框：按钮 + 复选列表弹窗。"""
 
-    def __init__(self, master) -> None:
+    def __init__(self, master, *, quick_video: bool = False) -> None:
         super().__init__(master, corner_radius=0, fg_color="transparent")
         self.options: list[tuple[str, str]] = []
         self.selected: set[str] = set()
         self.popup: ctk.CTkToplevel | None = None
         self._rows: list[tuple[tk.BooleanVar, str]] = []
         self._list: ctk.CTkScrollableFrame | None = None
+        self._quick_video = quick_video
         self.button = RoundedButton(
             self,
             text="请先扫描文件  ▾",
@@ -462,6 +463,8 @@ class MultiSelectDropdown(ctk.CTkFrame):
         RoundedButton(actions, text="全选", variant="link", padx=10, pady=5, command=lambda: self._set_all(True)).pack(side="left")
         RoundedButton(actions, text="反选", variant="link", padx=10, pady=5, command=self._invert).pack(side="left", padx=2)
         RoundedButton(actions, text="清空", variant="link", padx=10, pady=5, command=lambda: self._set_all(False)).pack(side="left")
+        if self._quick_video:
+            RoundedButton(actions, text="只选视频", variant="link", padx=10, pady=5, command=lambda: self._select_extensions(TYPE_GROUPS["视频"])).pack(side="left", padx=(10, 0))
 
         group_map = self._available_groups()
         group_var = tk.StringVar(value=next(iter(group_map), ""))
@@ -514,6 +517,12 @@ class MultiSelectDropdown(ctk.CTkFrame):
         wanted = set(indices)
         for position, (variable, _) in enumerate(self._rows):
             variable.set(position in wanted)
+
+    def _select_extensions(self, extensions) -> None:
+        """按扩展名快捷勾选（例如“只选视频”）。"""
+        wanted = set(extensions)
+        for variable, value in self._rows:
+            variable.set(value in wanted)
 
     def _apply(self) -> None:
         self.selected = {value for variable, value in self._rows if variable.get()}

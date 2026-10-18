@@ -10,7 +10,6 @@ from .core import CleanupOptions, OrganizeOptions, RenameOptions, SearchOptions,
 from .duplicates import DuplicateOptions, DuplicateResult, order_group_members
 from .utils import format_size
 from .widgets import (
-    FIELD_HEIGHT,
     MultiSelectDropdown,
     RoundedButton,
     TabHost,
@@ -252,38 +251,34 @@ class DuplicatesTabMixin:
 
         find_box = section(tab, "第 1 步：查找重复或相似文件")
 
+        # 与重命名页保持同一套栅格：第 0 列放标签/复选框，第 1 列放控件。
+        checkbox(find_box, "文件名相似", self.dup_name_var).grid(row=0, column=0, sticky="w", pady=3)
         name_row = ctk.CTkFrame(find_box, corner_radius=0, fg_color="transparent")
-        name_row.pack(fill="x", pady=3)
-        checkbox(name_row, "文件名相似", self.dup_name_var).pack(side="left")
-        label(name_row, "相似度").pack(side="left", padx=(10, 4))
-        entry(name_row, textvariable=self.dup_name_thresh_var, width=6).pack(side="left")
+        name_row.grid(row=0, column=1, sticky="ew", pady=3)
+        label(name_row, "相似度").pack(side="left")
+        entry(name_row, textvariable=self.dup_name_thresh_var, width=6).pack(side="left", padx=(6, 0))
 
+        checkbox(find_box, "大小接近", self.dup_size_var).grid(row=1, column=0, sticky="w", pady=3)
         size_row = ctk.CTkFrame(find_box, corner_radius=0, fg_color="transparent")
-        size_row.pack(fill="x", pady=3)
-        checkbox(size_row, "大小接近", self.dup_size_var).pack(side="left")
-        label(size_row, "差异").pack(side="left", padx=(10, 4))
-        entry(size_row, textvariable=self.dup_size_percent_var, width=4).pack(side="left")
+        size_row.grid(row=1, column=1, sticky="ew", pady=3)
+        label(size_row, "差异").pack(side="left")
+        entry(size_row, textvariable=self.dup_size_percent_var, width=4).pack(side="left", padx=(6, 0))
         label(size_row, "% 或").pack(side="left", padx=4)
         entry(size_row, textvariable=self.dup_size_diff_var, width=6).pack(side="left")
         label(size_row, "字节").pack(side="left", padx=4)
 
-        checkbox(find_box, "字节相同（哈希确认，大文件较慢）", self.dup_hash_var).pack(anchor="w", pady=3)
+        checkbox(find_box, "字节相同（哈希确认，大文件较慢）", self.dup_hash_var).grid(row=2, column=0, columnspan=2, sticky="w", pady=3)
 
-        label_type_row = ctk.CTkFrame(find_box, corner_radius=0, fg_color="transparent")
-        label_type_row.pack(fill="x", pady=(6, 0))
-        label(label_type_row, "文件类型").pack(side="left")
-        self.dup_type_picker = MultiSelectDropdown(label_type_row)
-        self.dup_type_picker.pack(side="left", fill="x", expand=True, padx=(6, 0))
-        RoundedButton(label_type_row, text="只选视频", variant="secondary", padx=12, pady=7, height=FIELD_HEIGHT, command=self._select_video_types).pack(side="left", padx=(6, 0))
+        label(find_box, "文件类型").grid(row=3, column=0, sticky="w", pady=3)
+        self.dup_type_picker = MultiSelectDropdown(find_box, quick_video=True)
+        self.dup_type_picker.grid(row=3, column=1, sticky="ew", pady=3)
 
-        min_row = ctk.CTkFrame(find_box, corner_radius=0, fg_color="transparent")
-        min_row.pack(fill="x", pady=(6, 0))
-        label(min_row, "最小大小").pack(side="left")
-        entry(min_row, textvariable=self.dup_min_size_var, width=8).pack(side="left", padx=4)
-        label(min_row, "MB（视频库建议 ≥ 1）").pack(side="left")
+        label(find_box, "最小大小 MB").grid(row=4, column=0, sticky="w", pady=3)
+        entry(find_box, textvariable=self.dup_min_size_var, width=8).grid(row=4, column=1, sticky="w", pady=3)
 
-        RoundedButton(find_box, text="1. 查找重复/相似文件", variant="primary", command=self._find_duplicates).pack(fill="x", pady=(8, 2))
-        hint(find_box, "查找不会修改任何文件；哈希确认只读取文件内容。").pack(anchor="w")
+        RoundedButton(find_box, text="1. 查找重复/相似文件", variant="primary", command=self._find_duplicates).grid(row=5, column=0, columnspan=2, sticky="ew", pady=(8, 2))
+        hint(find_box, "查找不会修改任何文件；哈希确认只读取文件内容。视频库建议最小大小 ≥ 1 MB。").grid(row=6, column=0, columnspan=2, sticky="w")
+        find_box.columnconfigure(1, weight=1)
 
         clean_box = section(tab, "第 2 步：生成清理预览", pady=(10, 0))
         label(clean_box, "参与清理的分组类型").pack(anchor="w")
@@ -301,9 +296,6 @@ class DuplicatesTabMixin:
         keeper_box.bind("<<ComboboxSelected>>", self._on_keeper_changed)
         RoundedButton(clean_box, text="2. 生成清理预览", variant="primary", command=self._preview_duplicate_cleanup).pack(fill="x", pady=(8, 4))
         hint(clean_box, "清理会把“保留”以外的文件移动到 工作目录/重复文件/组N/，可在“历史与撤销”中恢复。").pack(anchor="w")
-
-    def _select_video_types(self) -> None:
-        self.dup_type_picker.set_selected(TYPE_GROUPS["视频"])
 
     def _duplicate_options(self) -> DuplicateOptions:
         if not self.dup_name_var.get() and not self.dup_size_var.get() and not self.dup_hash_var.get():
