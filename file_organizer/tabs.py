@@ -269,12 +269,12 @@ class DuplicatesTabMixin:
 
         checkbox(find_box, "字节相同（哈希确认，大文件较慢）", self.dup_hash_var).pack(anchor="w", pady=3)
 
-        label(find_box, "文件类型").pack(anchor="w", pady=(6, 2))
-        type_row = ctk.CTkFrame(find_box, corner_radius=0, fg_color="transparent")
-        type_row.pack(fill="x")
-        self.dup_type_picker = MultiSelectDropdown(type_row)
-        self.dup_type_picker.pack(side="left", fill="x", expand=True)
-        RoundedButton(type_row, text="只选视频", variant="secondary", padx=12, pady=7, height=FIELD_HEIGHT, command=self._select_video_types).pack(side="left", padx=(6, 0))
+        label_type_row = ctk.CTkFrame(find_box, corner_radius=0, fg_color="transparent")
+        label_type_row.pack(fill="x", pady=(6, 0))
+        label(label_type_row, "文件类型").pack(side="left")
+        self.dup_type_picker = MultiSelectDropdown(label_type_row)
+        self.dup_type_picker.pack(side="left", fill="x", expand=True, padx=(6, 0))
+        RoundedButton(label_type_row, text="只选视频", variant="secondary", padx=12, pady=7, height=FIELD_HEIGHT, command=self._select_video_types).pack(side="left", padx=(6, 0))
 
         min_row = ctk.CTkFrame(find_box, corner_radius=0, fg_color="transparent")
         min_row.pack(fill="x", pady=(6, 0))

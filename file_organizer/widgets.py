@@ -117,7 +117,7 @@ def _merge(defaults: dict, width, kwargs: dict) -> dict:
 
 
 # 所有输入/选择控件共用同一套尺寸，保证各页签观感一致。
-FIELD_HEIGHT = 30
+FIELD_HEIGHT = 32
 FIELD_RADIUS = 8
 
 
@@ -137,6 +137,30 @@ def entry(master, *, textvariable=None, width=None, **kwargs) -> ctk.CTkEntry:
         kwargs,
     )
     return ctk.CTkEntry(master, textvariable=textvariable, **options)
+
+
+class SeamlessComboBox(ctk.CTkComboBox):
+    """边框左右连续的只读下拉框。
+
+    CustomTkinter 默认把“箭头区”的边框画成 ``button_color``（白底），
+    于是 1px 描边在箭头处断掉，看起来像两个拼起来的控件。这里在每次
+    重绘后把右侧描边/底色改回与左侧一致，保证是一个完整的圆角框。
+    """
+
+    def _draw(self, no_color_updates: bool = False) -> None:
+        super()._draw(no_color_updates)
+        if not self._canvas.winfo_exists():
+            return
+        self._canvas.itemconfig(
+            "border_parts_right",
+            outline=self._apply_appearance_mode(self._border_color),
+            fill=self._apply_appearance_mode(self._border_color),
+        )
+        self._canvas.itemconfig(
+            "inner_parts_right",
+            outline=self._apply_appearance_mode(self._fg_color),
+            fill=self._apply_appearance_mode(self._fg_color),
+        )
 
 
 def combo(master, *, variable=None, values=(), width=None, **kwargs) -> ctk.CTkComboBox:
@@ -163,7 +187,7 @@ def combo(master, *, variable=None, values=(), width=None, **kwargs) -> ctk.CTkC
         width,
         kwargs,
     )
-    widget = ctk.CTkComboBox(master, variable=variable, values=list(values), state="readonly", **options)
+    widget = SeamlessComboBox(master, variable=variable, values=list(values), state="readonly", **options)
     bind_combo_toggle(widget)
     return widget
 
@@ -374,7 +398,7 @@ class MultiSelectDropdown(ctk.CTkFrame):
         self._list: ctk.CTkScrollableFrame | None = None
         self.button = RoundedButton(
             self,
-            text="请先扫描文件",
+            text="请先扫描文件  ▾",
             variant="picker",
             align="w",
             padx=12,
@@ -524,7 +548,7 @@ class MultiSelectDropdown(ctk.CTkFrame):
         total = len(self.options)
         count = len(self.selected)
         if total == 0:
-            text = "未扫描到文件类型"
+            text = "未扫描到文件类型  ▾"
         elif count == total:
             text = f"全部类型（{total} 种）  ▾"
         elif count == 0:

@@ -127,9 +127,9 @@ class FileOrganizerApp(RenameTabMixin, OrganizeTabMixin, DuplicatesTabMixin, His
         self.tree.tag_configure("success", foreground="#248A3D")
         self.tree.tag_configure("failed", foreground="#D70015")
         self.tree.tag_configure("pending", foreground="#6E6E73")
-        self.tree.tag_configure("dup-hash", foreground="#248A3D", font=(FONT_FAMILY, 10, "bold"))
-        self.tree.tag_configure("dup-size", foreground="#B25000", font=(FONT_FAMILY, 10, "bold"))
-        self.tree.tag_configure("dup-name", foreground="#0071E3", font=(FONT_FAMILY, 10, "bold"))
+        self.tree.tag_configure("dup-hash", foreground="#248A3D", font=(FONT_FAMILY, 11, "bold"))
+        self.tree.tag_configure("dup-size", foreground="#B25000", font=(FONT_FAMILY, 11, "bold"))
+        self.tree.tag_configure("dup-name", foreground="#0071E3", font=(FONT_FAMILY, 11, "bold"))
         self.tree.tag_configure("keep", foreground="#248A3D")
         self.tree.tag_configure("candidate", foreground="#B25000")
         headings = {"status": "状态", "source": "原文件", "destination": "目标位置", "size": "大小"}

@@ -30,11 +30,15 @@ SCROLL_THUMB_ACTIVE = "#AEAEB2"
 SELECT_BG = "#E8F1FF"
 CHECK_BORDER = "#C7C7CC"
 
+# 全局字号偏移：整体比默认大一档，观感更舒展。
+FONT_SIZE_OFFSET = 1
+
 _fonts: dict[tuple[int, str], ctk.CTkFont] = {}
 
 
 def font(size: int = 12, weight: str = "normal") -> ctk.CTkFont:
     """按字号/字重获取缓存的 CTkFont（需要已存在 Tk 根窗口）。"""
+    size = size + FONT_SIZE_OFFSET
     key = (size, weight)
     cached = _fonts.get(key)
     if cached is None:
@@ -61,15 +65,15 @@ def configure_styles(widget) -> None:
         background=CARD_BG,
         fieldbackground=CARD_BG,
         foreground=TEXT_PRIMARY,
-        rowheight=30,
+        rowheight=32,
         borderwidth=0,
-        font=(FONT_FAMILY, 10),
+        font=(FONT_FAMILY, 11),
     )
     style.configure(
         "Treeview.Heading",
         background=CARD_BG,
         foreground=TEXT_SECONDARY,
-        font=(FONT_FAMILY, 10),
+        font=(FONT_FAMILY, 11),
         padding=(10, 9),
         relief="flat",
     )
