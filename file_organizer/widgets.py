@@ -409,19 +409,38 @@ class MultiSelectDropdown(ttk.Frame):
         popup.transient(self.winfo_toplevel())
         popup.configure(bg="#FFFFFF")
         popup.resizable(True, True)
+        popup.withdraw()
         x = self.button.winfo_rootx()
         y = self.button.winfo_rooty() + self.button.winfo_height() + 2
         width = max(self.button.winfo_width(), 380)
-        height = min(430, max(220, 110 + len(self.options) * 25))
         x = min(x, max(0, popup.winfo_screenwidth() - width - 20))
-        y = min(y, max(0, popup.winfo_screenheight() - height - 60))
-        popup.geometry(f"{width}x{height}+{x}+{y}")
-        popup.minsize(380, 260)
+        popup.minsize(380, 220)
         popup.protocol("WM_DELETE_WINDOW", self._close_popup)
 
         header = ttk.Frame(popup, style="Popup.TFrame", padding=(14, 12))
         header.pack(fill="x")
         ttk.Label(header, text="选择一个或多个文件类型", style="PopupTitle.TLabel").pack(anchor="w")
+
+        footer = ttk.Frame(popup, style="Popup.TFrame", padding=12)
+        footer.pack(side="bottom", fill="x")
+        RoundedButton(footer, text="确定", variant="primary", padx=20, pady=7, command=lambda: self._apply(listbox)).pack(side="right")
+        RoundedButton(footer, text="取消", variant="secondary", padx=16, pady=7, command=self._close_popup).pack(side="right", padx=(0, 8))
+
+        quick = ttk.Frame(popup, style="Popup.TFrame", padding=(12, 10))
+        quick.pack(fill="x")
+        actions = ttk.Frame(quick, style="Popup.TFrame")
+        actions.pack(fill="x")
+        RoundedButton(actions, text="全选", variant="link", padx=10, pady=5, command=lambda: listbox.selection_set(0, "end")).pack(side="left")
+        RoundedButton(actions, text="反选", variant="link", padx=10, pady=5, command=lambda: self._invert_selection(listbox)).pack(side="left", padx=2)
+        RoundedButton(actions, text="清空", variant="link", padx=10, pady=5, command=lambda: listbox.selection_clear(0, "end")).pack(side="left")
+
+        group_map = self._available_groups()
+        group_var = tk.StringVar(value=next(iter(group_map), ""))
+        groups = ttk.Frame(quick, style="Popup.TFrame")
+        groups.pack(fill="x", pady=(10, 0))
+        ttk.Label(groups, text="按类别：", style="PopupTitle.TLabel").pack(side="left")
+        ttk.Combobox(groups, textvariable=group_var, state="readonly", values=tuple(group_map)).pack(side="left", fill="x", expand=True)
+        RoundedButton(groups, text="选择类别", variant="primary", padx=12, pady=6, command=lambda: self._select_group(listbox, group_map.get(group_var.get(), ()))).pack(side="left", padx=(8, 0))
 
         list_frame = ttk.Frame(popup, style="Popup.TFrame", padding=(12, 0))
         list_frame.pack(fill="both", expand=True)
@@ -437,6 +456,7 @@ class MultiSelectDropdown(ttk.Frame):
             selectbackground="#0071E3",
             selectforeground="#FFFFFF",
             font=(FONT_FAMILY, 10),
+            height=min(max(len(self.options), 4), 12),
         )
         scrollbar = ttk.Scrollbar(list_frame, orient="vertical", command=listbox.yview)
         listbox.configure(yscrollcommand=scrollbar.set)
@@ -447,27 +467,16 @@ class MultiSelectDropdown(ttk.Frame):
             if value in self.selected:
                 listbox.selection_set(index)
 
-        quick = ttk.Frame(popup, style="Popup.TFrame", padding=(12, 10))
-        quick.pack(fill="x", before=list_frame)
-        actions = ttk.Frame(quick, style="Popup.TFrame")
-        actions.pack(fill="x")
-        RoundedButton(actions, text="全选", variant="link", padx=10, pady=5, command=lambda: listbox.selection_set(0, "end")).pack(side="left")
-        RoundedButton(actions, text="反选", variant="link", padx=10, pady=5, command=lambda: self._invert_selection(listbox)).pack(side="left", padx=2)
-        RoundedButton(actions, text="清空", variant="link", padx=10, pady=5, command=lambda: listbox.selection_clear(0, "end")).pack(side="left")
-
-        group_map = self._available_groups()
-        group_var = tk.StringVar(value=next(iter(group_map), ""))
-        groups = ttk.Frame(quick, style="Popup.TFrame")
-        groups.pack(fill="x", pady=(10, 0))
-        ttk.Label(groups, text="按类别：", style="PopupTitle.TLabel").pack(side="left")
-        ttk.Combobox(groups, textvariable=group_var, state="readonly", values=tuple(group_map)).pack(side="left", fill="x", expand=True)
-        RoundedButton(groups, text="选择类别", variant="primary", padx=12, pady=6, command=lambda: self._select_group(listbox, group_map.get(group_var.get(), ()))).pack(side="left", padx=(8, 0))
-
-        footer = ttk.Frame(popup, style="Popup.TFrame", padding=12)
-        footer.pack(fill="x")
-        RoundedButton(footer, text="确定", variant="primary", padx=20, pady=7, command=lambda: self._apply(listbox)).pack(side="right")
-        RoundedButton(footer, text="取消", variant="secondary", padx=16, pady=7, command=self._close_popup).pack(side="right", padx=(0, 8))
         popup.bind("<Escape>", lambda _event: self._close_popup())
+        popup.bind("<Return>", lambda _event: self._apply(listbox))
+        listbox.bind("<Double-Button-1>", lambda _event: self._apply(listbox))
+        popup.update_idletasks()
+        height = min(max(popup.winfo_reqheight(), 260), 560)
+        y = min(y, max(0, popup.winfo_screenheight() - height - 60))
+        popup.geometry(f"{width}x{height}+{x}+{y}")
+        popup.deiconify()
+        popup.lift()
+        popup.focus_force()
         listbox.focus_set()
 
     def _invert_selection(self, listbox: tk.Listbox) -> None:
