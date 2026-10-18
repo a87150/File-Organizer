@@ -1,6 +1,6 @@
 # 文件夹整理工具
 
-一个使用 Python 和 Tkinter 编写的 Windows 桌面文件整理工具。它可以批量搜索文件、修改文件名和扩展名，按照文件类型、名称、日期、大小或文件名提取结果把文件整理到对应的子文件夹，还可以查找重复或相似的文件并把多余副本安全地移入单独的文件夹。
+一个使用 Python、Tkinter 和 CustomTkinter 编写的 Windows 桌面文件整理工具，界面为苹果风格的浅色配色。它可以批量搜索文件、修改文件名和扩展名，按照文件类型、名称、日期、大小或文件名提取结果把文件整理到对应的子文件夹，还可以查找重复或相似的文件并把多余副本安全地移入单独的文件夹。
 
 工具采用“扫描 → 筛选 → 预览 → 确认执行”的工作方式。执行前可以逐项查看原文件和目标位置，已有同名文件不会被覆盖；每次成功操作都会保存日志，方便之后撤销。
 
@@ -42,13 +42,15 @@
 - 自动处理重名文件，不覆盖已有内容。
 - 扫描和实际执行在后台进行，减少界面卡顿。
 - 保存 JSON 操作日志，支持撤销上一次操作或选择历史日志撤销。
-- 仅使用 Python 标准库，无需安装第三方依赖。
+- 图形界面基于 CustomTkinter，圆角卡片与控件自带抗锯齿，整体为苹果风格浅色主题。
+- 除 CustomTkinter 外不依赖其他第三方库，文件操作全部使用 Python 标准库。
 
 ## 运行环境
 
 - Windows 10 或 Windows 11
 - Python 3.10 或更高版本
 - Tkinter 8.6 或更高版本
+- [CustomTkinter](https://github.com/TomSchimansky/CustomTkinter) 5.2 或更高版本（界面库）
 
 从 [Python 官方网站](https://www.python.org/downloads/windows/) 安装 Python 时，建议勾选 **Add Python to PATH**。Windows 官方 Python 安装包通常已经包含 Tkinter。
 
@@ -57,6 +59,7 @@
 ```powershell
 python --version
 python -c "import tkinter; print(tkinter.TkVersion)"
+python -c "import customtkinter; print(customtkinter.__version__)"
 ```
 
 ## 安装与启动
@@ -70,7 +73,21 @@ file_organizer/
 run.py
 ```
 
-### 2. 打开 PowerShell
+### 2. 安装依赖
+
+界面基于 CustomTkinter，首次运行前安装一次即可：
+
+```powershell
+python -m pip install -r requirements.txt
+```
+
+也可以直接安装：
+
+```powershell
+python -m pip install customtkinter
+```
+
+### 3. 打开 PowerShell
 
 进入项目目录，例如：
 
@@ -78,7 +95,7 @@ run.py
 cd "C:\Users\你的用户名\Documents\file-organizer"
 ```
 
-### 3. 启动程序
+### 4. 启动程序
 
 ```powershell
 python run.py
@@ -739,7 +756,7 @@ Beta_合同.pdf
 
 ### 可以在 macOS 或 Linux 上运行吗
 
-核心逻辑主要使用跨平台 Python 标准库，但当前界面、文件名规则说明和测试重点面向 Windows。其他系统可能可以运行，但尚未作为正式支持环境验证。
+核心逻辑主要使用跨平台 Python 标准库，界面依赖 Tkinter 与 CustomTkinter，理论上也可以运行，但当前界面、文件名规则说明和测试重点面向 Windows，其他系统尚未作为正式支持环境验证。
 
 ## 项目结构与测试
 
@@ -753,13 +770,14 @@ Beta_合同.pdf
 │  ├─ core.py            # 扫描、搜索、重命名、分类、执行与撤销逻辑
 │  ├─ duplicates.py      # 重复与相似文件查找算法
 │  ├─ cli.py             # 命令行查重入口
-│  ├─ widgets.py         # 多选下拉等自定义控件
-│  ├─ theme.py           # ttk 主题样式
+│  ├─ widgets.py         # 统一风格控件（按钮、卡片、分段页签、多选下拉等）
+│  ├─ theme.py           # 配色、字体与 CustomTkinter 主题设置
 │  └─ utils.py           # 通用工具（大小格式化等）
 ├─ tests/
 │  ├─ test_core.py       # 核心功能单元测试
 │  └─ test_duplicates.py # 查重与清理单元测试
 ├─ run.py                # 图形界面启动入口
+├─ requirements.txt      # 运行依赖（CustomTkinter）
 ├─ pyproject.toml        # 项目元数据
 ├─ README.md             # 使用文档
 └─ .gitignore

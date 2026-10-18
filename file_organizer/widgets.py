@@ -1,320 +1,307 @@
+"""控件层：基于 CustomTkinter 的统一风格控件与表单元素。
+
+对外暴露两类接口：
+- 旧接口保持兼容（``RoundedButton`` / ``RoundedPanel`` / ``SegmentedControl`` /
+  ``TabHost`` / ``MultiSelectDropdown``），这样各页签代码无需大改；
+- 表单 helper（``label`` / ``hint`` / ``section`` / ``entry`` / ``combo`` /
+  ``checkbox`` / ``radio`` / ``textbox``），保证所有页签的输入与选择控件风格一致。
+"""
+
 from __future__ import annotations
 
 import tkinter as tk
-import tkinter.font as tkfont
-from tkinter import ttk
+
+import customtkinter as ctk
 
 from .core import TYPE_GROUPS
-from .theme import FONT_FAMILY
+from .theme import (
+    ACCENT,
+    ACCENT_HOVER,
+    BORDER,
+    CARD_BG,
+    CHECK_BORDER,
+    FIELD_BORDER,
+    HOVER_BG,
+    MUTED_BG,
+    SCROLL_THUMB,
+    SCROLL_THUMB_ACTIVE,
+    SEGMENT_BG,
+    SEGMENT_HOVER,
+    TEXT_PRIMARY,
+    TEXT_SECONDARY,
+)
+from .theme import font as ui_font
+
+BUTTON_VARIANTS = {
+    "primary": {"fill": ACCENT, "hover": ACCENT_HOVER, "text": "#FFFFFF", "border": None},
+    "secondary": {"fill": SEGMENT_BG, "hover": SEGMENT_HOVER, "text": TEXT_PRIMARY, "border": None},
+    "quiet": {"fill": "transparent", "hover": HOVER_BG, "text": TEXT_PRIMARY, "border": None},
+    "link": {"fill": "transparent", "hover": HOVER_BG, "text": ACCENT, "border": None},
+    "picker": {"fill": CARD_BG, "hover": HOVER_BG, "text": TEXT_PRIMARY, "border": FIELD_BORDER},
+}
 
 
-_AA_SAMPLES = 4
-
-
-def _hex_to_rgb(value: str) -> tuple[int, int, int]:
-    value = value.lstrip("#")
-    return int(value[0:2], 16), int(value[2:4], 16), int(value[4:6], 16)
-
-
-def _blend(base: str, color: str, coverage: float) -> str:
-    if coverage >= 0.999:
-        return color
-    if coverage <= 0.001:
-        return base
-    base_r, base_g, base_b = _hex_to_rgb(base)
-    color_r, color_g, color_b = _hex_to_rgb(color)
-    red = round(base_r + (color_r - base_r) * coverage)
-    green = round(base_g + (color_g - base_g) * coverage)
-    blue = round(base_b + (color_b - base_b) * coverage)
-    return f"#{red:02x}{green:02x}{blue:02x}"
-
-
-def _corner_pixels(radius: int, color: str, base: str) -> list[list[str]]:
-    """左上角的抗锯齿像素矩阵（4x4 超采样），其余角通过镜像得到。"""
-    matrix: list[list[str]] = []
-    total = _AA_SAMPLES * _AA_SAMPLES
-    for py in range(radius):
-        row: list[str] = []
-        for px in range(radius):
-            inside = 0
-            for i in range(_AA_SAMPLES):
-                for j in range(_AA_SAMPLES):
-                    sx = px + (i + 0.5) / _AA_SAMPLES
-                    sy = py + (j + 0.5) / _AA_SAMPLES
-                    if (sx - radius) ** 2 + (sy - radius) ** 2 <= radius * radius:
-                        inside += 1
-            row.append(_blend(base, color, inside / total))
-        matrix.append(row)
-    return matrix
-
-
-def _paint_rounded(image: tk.PhotoImage, width: int, height: int, radius: int, color: str, base: str | None, offset: tuple[int, int] = (0, 0)) -> None:
-    """在图像上绘制一个抗锯齿的圆角矩形；base 为圆角外的底色（None 表示实心填充整块）。"""
-    ox, oy = offset
-    if width <= 0 or height <= 0:
-        return
-    if base is None:
-        image.put(color, to=(ox, oy, ox + width, oy + height))
-        return
-    radius = max(1, min(radius, width // 2, height // 2))
-    if height - 2 * radius > 0:
-        image.put(color, to=(ox, oy + radius, ox + width, oy + height - radius))
-    if width - 2 * radius > 0:
-        image.put(color, to=(ox + radius, oy, ox + width - radius, oy + height))
-    corner = _corner_pixels(radius, color, base)
-
-    normal = " ".join("{" + " ".join(row) + "}" for row in corner)
-    flipped = " ".join("{" + " ".join(row) + "}" for row in reversed(corner))
-    mirrored = " ".join("{" + " ".join(reversed(row)) + "}" for row in corner)
-    mirrored_flipped = " ".join("{" + " ".join(reversed(row)) + "}" for row in reversed(corner))
-    image.put(normal, to=(ox, oy))
-    image.put(mirrored, to=(ox + width - radius, oy))
-    image.put(flipped, to=(ox, oy + height - radius))
-    image.put(mirrored_flipped, to=(ox + width - radius, oy + height - radius))
-
-
-def rounded_rect_image(width: int, height: int, radius: int, fill: str, surface: str, border: str | None = None) -> tk.PhotoImage:
-    """生成带抗锯齿圆角的矩形图像（纯标准库，无需第三方依赖）。"""
-    width = max(int(width), 2)
-    height = max(int(height), 2)
-    radius = max(1, min(int(radius), width // 2, height // 2))
-    image = tk.PhotoImage(width=width, height=height)
-    image.put(surface, to=(0, 0, width, height))
-    if border:
-        _paint_rounded(image, width, height, radius, border, surface)
-        inset_radius = max(radius - 1, 1)
-        _paint_rounded(image, width - 2, height - 2, inset_radius, fill, border, offset=(1, 1))
-    else:
-        _paint_rounded(image, width, height, radius, fill, surface)
-    return image
-
-
-class RoundedButton(tk.Canvas):
-    """圆角按钮，支持 primary / secondary / quiet / link / picker 变体。"""
-
-    _VARIANTS = {
-        "primary": {"fill": "#0071E3", "hover": "#0077ED", "pressed": "#0062C4", "text": "#FFFFFF", "border": ""},
-        "secondary": {"fill": "#E8E8ED", "hover": "#DEDEE3", "pressed": "#D2D2D7", "text": "#1D1D1F", "border": ""},
-        "quiet": {"fill": "", "hover": "#F2F2F7", "pressed": "#E8E8ED", "text": "#1D1D1F", "border": ""},
-        "link": {"fill": "", "hover": "#EAF3FF", "pressed": "#DBEAFF", "text": "#0071E3", "border": ""},
-        "picker": {"fill": "#FFFFFF", "hover": "#F7F7F9", "pressed": "#F2F2F7", "text": "#1D1D1F", "border": "#D2D2D7"},
-    }
-    _DISABLED_FILL = "#E8E8ED"
-    _DISABLED_TEXT = "#AEAEB2"
-
-    def __init__(
-        self,
+def RoundedButton(
+    master,
+    *,
+    text: str = "",
+    command=None,
+    variant: str = "secondary",
+    font=None,
+    padx: int = 16,
+    pady: int = 8,
+    radius: int = 10,
+    align: str = "center",
+    surface: str = CARD_BG,
+    state: str = "normal",
+) -> ctk.CTkButton:
+    """统一风格的圆角按钮（CustomTkinter 自带抗锯齿圆角）。"""
+    palette = BUTTON_VARIANTS.get(variant, BUTTON_VARIANTS["secondary"])
+    text_font = font if isinstance(font, ctk.CTkFont) else ui_font(12)
+    height = int(text_font.metrics("linespace")) + pady * 2
+    width = int(text_font.measure(text)) + padx * 2
+    return ctk.CTkButton(
         master,
-        *,
-        text: str = "",
-        command=None,
-        variant: str = "secondary",
-        font=None,
-        padx: int = 16,
-        pady: int = 8,
-        radius: int = 10,
-        align: str = "center",
-        surface: str = "#FFFFFF",
-        state: str = "normal",
-    ) -> None:
-        super().__init__(master, highlightthickness=0, bd=0, bg=surface, cursor="hand2" if state != "disabled" else "arrow")
-        self._font = tkfont.Font(font=font or (FONT_FAMILY, 10))
-        self._variant = variant if variant in self._VARIANTS else "secondary"
-        self._command = command
-        self._padx = padx
-        self._pady = pady
-        self._radius = radius
-        self._align = align
-        self._surface = surface
-        self._state = state
-        self._text = text
-        self._hovered = False
-        self._pressed = False
-        self._images: dict[tuple, tk.PhotoImage] = {}
-        self._apply_size()
-        self.bind("<Configure>", lambda _event: self._draw())
-        self.bind("<Enter>", self._on_enter)
-        self.bind("<Leave>", self._on_leave)
-        self.bind("<ButtonPress-1>", self._on_press)
-        self.bind("<ButtonRelease-1>", self._on_release)
-
-    def _apply_size(self) -> None:
-        width = self._font.measure(self._text) + self._padx * 2
-        height = self._font.metrics("linespace") + self._pady * 2
-        super().configure(width=max(width, 44), height=max(height, 28))
-
-    def configure(self, cnf=None, **kw):
-        redraw = False
-        if "text" in kw:
-            self._text = kw.pop("text")
-            redraw = True
-        if "state" in kw:
-            self._state = kw.pop("state")
-            super().configure(cursor="arrow" if self._state == "disabled" else "hand2")
-            redraw = True
-        if "command" in kw:
-            self._command = kw.pop("command")
-        result = super().configure(cnf, **kw)
-        if redraw:
-            self._apply_size()
-            self._draw()
-        return result
-
-    config = configure
-
-    def _on_enter(self, _event) -> None:
-        self._hovered = True
-        self._draw()
-
-    def _on_leave(self, _event) -> None:
-        self._hovered = False
-        self._pressed = False
-        self._draw()
-
-    def _on_press(self, _event) -> None:
-        if self._state == "disabled":
-            return
-        self._pressed = True
-        self._draw()
-
-    def _on_release(self, _event) -> None:
-        was_pressed = self._pressed
-        self._pressed = False
-        self._draw()
-        if was_pressed and self._hovered and self._state != "disabled" and self._command is not None:
-            self._command()
-
-    def _draw(self) -> None:
-        self.delete("all")
-        width = max(self.winfo_width(), 2)
-        height = max(self.winfo_height(), 2)
-        variant = self._VARIANTS[self._variant]
-        if self._state == "disabled":
-            fill, text_color, border = self._DISABLED_FILL, self._DISABLED_TEXT, ""
-        else:
-            if self._pressed and self._hovered:
-                fill = variant["pressed"]
-            elif self._hovered:
-                fill = variant["hover"]
-            else:
-                fill = variant["fill"] or self._surface
-            text_color = variant["text"]
-            border = variant["border"]
-        image = self._image(width, height, fill, border)
-        self.create_image(0, 0, anchor="nw", image=image)
-        if self._align == "w":
-            self.create_text(self._padx, height / 2, text=self._text, anchor="w", fill=text_color, font=self._font)
-        else:
-            self.create_text(width / 2, height / 2, text=self._text, anchor="center", fill=text_color, font=self._font)
-
-    def _image(self, width: int, height: int, fill: str, border: str) -> tk.PhotoImage:
-        key = (width, height, fill, border)
-        image = self._images.get(key)
-        if image is None:
-            image = rounded_rect_image(width, height, self._radius, fill, self._surface, border or None)
-            if len(self._images) >= 12:
-                self._images.clear()
-            self._images[key] = image
-        return image
+        text=text,
+        command=command,
+        font=text_font,
+        width=max(width, 44),
+        height=max(height, 28),
+        corner_radius=radius,
+        fg_color=palette["fill"],
+        hover_color=palette["hover"],
+        text_color=palette["text"],
+        text_color_disabled=MUTED_BG,
+        border_width=1 if palette["border"] else 0,
+        border_color=palette["border"] or BORDER,
+        anchor="w" if align == "w" else "center",
+        state=state,
+    )
 
 
-class SegmentedControl(tk.Canvas):
-    """macOS 风格分段控制器，用于替代 Notebook 页签。"""
+# --------------------------------------------------------------------- 表单控件
 
-    def __init__(self, master, *, options=(), command=None, bg: str = "#FFFFFF", font=None, padx: int = 12, height: int = 34, radius: int = 9) -> None:
-        super().__init__(master, highlightthickness=0, bd=0, bg=bg, cursor="hand2")
-        self._font = tkfont.Font(font=font or (FONT_FAMILY, 10))
-        self._font_bold = tkfont.Font(font=font or (FONT_FAMILY, 10))
-        self._font_bold.configure(weight="bold")
-        self._labels: list[str] = []
-        self._command = command
-        self._padx = padx
-        self._radius = radius
-        self._height = height
-        self._surface = bg
-        self._images: dict[tuple, tk.PhotoImage] = {}
+def label(master, text: str = "", *, size: int = 12, weight: str = "normal", color: str = TEXT_PRIMARY, **kwargs) -> ctk.CTkLabel:
+    """普通文本标签（统一字体与颜色）。"""
+    kwargs.setdefault("anchor", "w")
+    kwargs.setdefault("justify", "left")
+    return ctk.CTkLabel(master, text=text, font=ui_font(size, weight), text_color=color, **kwargs)
+
+
+def hint(master, text: str, *, wraplength: int = 280, **kwargs) -> ctk.CTkLabel:
+    """次要说明文字（小一号、灰色、自动换行）。"""
+    return label(master, text, size=11, color=TEXT_SECONDARY, wraplength=wraplength, **kwargs)
+
+
+def section(master, title: str, *, fill: str = "x", expand: bool = False, pady=0, padx=0) -> ctk.CTkFrame:
+    """带标题的白色圆角卡片；返回内容容器，直接把子控件放进去即可。"""
+    card = ctk.CTkFrame(master, corner_radius=12, fg_color=CARD_BG, border_width=1, border_color=BORDER)
+    card.pack(fill=fill, expand=expand, pady=pady, padx=padx)
+    ctk.CTkLabel(card, text=title, font=ui_font(12, "bold"), text_color=TEXT_PRIMARY, anchor="w").pack(fill="x", padx=12, pady=(10, 0))
+    body = ctk.CTkFrame(card, corner_radius=0, fg_color="transparent")
+    body.pack(fill="both", expand=True, padx=12, pady=(6, 10))
+    body.card = card
+    return body
+
+
+def _merge(defaults: dict, width, kwargs: dict) -> dict:
+    options = dict(defaults)
+    if width:
+        options["width"] = max(64, int(width) * 9 + 24)
+    options.update(kwargs)
+    return options
+
+
+def entry(master, *, textvariable=None, width=None, **kwargs) -> ctk.CTkEntry:
+    """统一样式的输入框；``width`` 传大约的字符数，会自动换算成像素。"""
+    options = _merge(
+        {
+            "corner_radius": 8,
+            "height": 30,
+            "border_width": 1,
+            "border_color": FIELD_BORDER,
+            "fg_color": CARD_BG,
+            "text_color": TEXT_PRIMARY,
+            "font": ui_font(12),
+        },
+        width,
+        kwargs,
+    )
+    return ctk.CTkEntry(master, textvariable=textvariable, **options)
+
+
+def combo(master, *, variable=None, values=(), width=None, **kwargs) -> ctk.CTkComboBox:
+    """统一样式的下拉选择框（只读，可选择但不可输入）。"""
+    options = _merge(
+        {
+            "corner_radius": 8,
+            "height": 30,
+            "border_width": 1,
+            "border_color": FIELD_BORDER,
+            "fg_color": CARD_BG,
+            "button_color": CARD_BG,
+            "button_hover_color": HOVER_BG,
+            "dropdown_fg_color": CARD_BG,
+            "dropdown_hover_color": HOVER_BG,
+            "dropdown_text_color": TEXT_PRIMARY,
+            "dropdown_font": ui_font(12),
+            "text_color": TEXT_PRIMARY,
+            "font": ui_font(12),
+        },
+        width,
+        kwargs,
+    )
+    return ctk.CTkComboBox(master, variable=variable, values=list(values), state="readonly", **options)
+
+
+def checkbox(master, text: str, variable, **kwargs) -> ctk.CTkCheckBox:
+    """统一样式的复选框（主题蓝，选中显示标准对勾）。"""
+    options = _merge(
+        {
+            "font": ui_font(12),
+            "text_color": TEXT_PRIMARY,
+            "fg_color": ACCENT,
+            "hover_color": ACCENT_HOVER,
+            "border_color": CHECK_BORDER,
+            "checkmark_color": "#FFFFFF",
+            "corner_radius": 6,
+            "border_width": 1,
+            "checkbox_width": 20,
+            "checkbox_height": 20,
+            "text_color_disabled": MUTED_BG,
+        },
+        None,
+        kwargs,
+    )
+    return ctk.CTkCheckBox(master, text=text, variable=variable, **options)
+
+
+def radio(master, text: str, variable, value, **kwargs) -> ctk.CTkRadioButton:
+    """统一样式的单选框（主题蓝圆点）。"""
+    options = _merge(
+        {
+            "font": ui_font(12),
+            "text_color": TEXT_PRIMARY,
+            "fg_color": ACCENT,
+            "hover_color": ACCENT_HOVER,
+            "border_color": CHECK_BORDER,
+            "radiobutton_width": 20,
+            "radiobutton_height": 20,
+            "border_width_unchecked": 1,
+            "border_width_checked": 6,
+        },
+        None,
+        kwargs,
+    )
+    return ctk.CTkRadioButton(master, text=text, variable=variable, value=value, **options)
+
+
+def textbox(master, *, height: int = 160, **kwargs) -> ctk.CTkTextbox:
+    """统一样式的多行文本框。"""
+    options = _merge(
+        {
+            "corner_radius": 8,
+            "border_width": 1,
+            "border_color": FIELD_BORDER,
+            "fg_color": CARD_BG,
+            "text_color": TEXT_PRIMARY,
+            "font": ui_font(12),
+            "scrollbar_button_color": SCROLL_THUMB,
+            "scrollbar_button_hover_color": SCROLL_THUMB_ACTIVE,
+        },
+        None,
+        kwargs,
+    )
+    options["height"] = height
+    return ctk.CTkTextbox(master, **options)
+
+
+def scrollbar(master, *, orientation: str = "vertical", command=None, **kwargs) -> ctk.CTkScrollbar:
+    """统一样式的滚动条（配合 Treeview 等标准控件使用）。"""
+    options = {
+        "orientation": orientation,
+        "command": command,
+        "fg_color": "transparent",
+        "button_color": SCROLL_THUMB,
+        "button_hover_color": SCROLL_THUMB_ACTIVE,
+    }
+    options.update(kwargs)
+    return ctk.CTkScrollbar(master, **options)
+
+
+# --------------------------------------------------------------------- 复合控件
+
+class SegmentedControl(ctk.CTkSegmentedButton):
+    """macOS 风格分段控制器，用于替代 Notebook 页签。
+
+    CustomTkinter 的分段控件内部是等宽列、且宽度固定，需要按文字实际
+    宽度算出一个不会裁切文字的尺寸。
+    """
+
+    def __init__(self, master, *, options=(), command=None, bg: str = CARD_BG, font=None, padx: int = 12, height: int = 34, radius: int = 9) -> None:
+        self._label_font = font or ui_font(12)
+        super().__init__(
+            master,
+            values=list(options) or [""],
+            command=self._on_change,
+            font=self._label_font,
+            width=self._measure_width(options),
+            height=height,
+            corner_radius=radius,
+            border_width=2,
+            fg_color=SEGMENT_BG,
+            selected_color=CARD_BG,
+            selected_hover_color=CARD_BG,
+            unselected_color=SEGMENT_BG,
+            unselected_hover_color=SEGMENT_HOVER,
+            text_color=TEXT_PRIMARY,
+            dynamic_resizing=False,
+        )
+        self._labels: list[str] = list(options)
+        self._callback = command
         self.index = -1
-        self.bind("<Configure>", lambda _event: self._draw())
-        self.bind("<Button-1>", self._on_click)
-        self.set_options(list(options))
-        super().configure(height=self._height)
+        self._suppress_change = False
+        if self._labels:
+            self.select(0, notify=False)
+
+    def _measure_width(self, labels) -> int:
+        widest = max((self._label_font.measure(item) for item in labels), default=48) + 34
+        return int(widest) * max(len(labels), 1) + 8
+
+    def _on_change(self, value: str) -> None:
+        if self._suppress_change or value not in self._labels:
+            return
+        self.index = self._labels.index(value)
+        if self._callback is not None:
+            self._callback(self.index)
 
     def set_options(self, options: list[str]) -> None:
         self._labels = list(options)
-        width = sum(self._segment_width(option) for option in self._labels) + 4
-        super().configure(width=max(width, 44))
-        if self._labels and self.index < 0:
-            self.index = 0
-        if self.index >= len(self._labels):
-            self.index = len(self._labels) - 1
-        self._draw()
+        super().configure(values=self._labels or [""], width=self._measure_width(self._labels))
+        if self._labels:
+            self.select(self.index if 0 <= self.index < len(self._labels) else 0, notify=False)
+        else:
+            self.index = -1
 
     def select(self, index: int, notify: bool = False) -> None:
-        if index == self.index:
+        if not self._labels:
             return
+        index = max(0, min(index, len(self._labels) - 1))
         self.index = index
-        self._draw()
-        if notify and self._command is not None:
-            self._command(index)
-
-    def _segment_width(self, label: str) -> int:
-        return self._font_bold.measure(label) + self._padx * 2
-
-    def _bounds(self) -> list[tuple[int, int]]:
-        bounds = []
-        x = 2
-        for label in self._labels:
-            width = self._segment_width(label)
-            bounds.append((x, x + width))
-            x += width
-        return bounds
-
-    def _draw(self) -> None:
-        self.delete("all")
-        width = max(self.winfo_width(), 4)
-        height = max(self.winfo_height(), 2)
-        track = self._image(width, height, self._radius, "#E8E8ED", None)
-        self.create_image(0, 0, anchor="nw", image=track)
-        if not self._labels:
-            return
-        bounds = self._bounds()
-        if 0 <= self.index < len(bounds):
-            x1, x2 = bounds[self.index]
-            pill_width = x2 - x1 - 2
-            pill_height = height - 4
-            if pill_width > 4 and pill_height > 4:
-                pill = self._image(pill_width, pill_height, max(self._radius - 3, 2), "#FFFFFF", "#DCDCE1")
-                self.create_image(x1 + 1, 2, anchor="nw", image=pill)
-        for position, label in enumerate(self._labels):
-            x1, x2 = bounds[position]
-            font = self._font_bold if position == self.index else self._font
-            color = "#1D1D1F" if position == self.index else "#48484A"
-            self.create_text((x1 + x2) / 2, height / 2, text=label, font=font, fill=color)
-
-    def _image(self, width: int, height: int, radius: int, fill: str, border: str | None) -> tk.PhotoImage:
-        key = (width, height, radius, fill, border)
-        image = self._images.get(key)
-        if image is None:
-            image = rounded_rect_image(width, height, radius, fill, self._surface, border)
-            if len(self._images) >= 12:
-                self._images.clear()
-            self._images[key] = image
-        return image
-
-    def _on_click(self, event) -> None:
-        if not self._labels:
-            return
-        for position, (x1, x2) in enumerate(self._bounds()):
-            if x1 <= event.x <= x2:
-                self.select(position, notify=True)
-                return
+        self._suppress_change = not notify
+        try:
+            super().set(self._labels[index])
+        finally:
+            self._suppress_change = False
+        if notify and self._callback is not None:
+            self._callback(index)
 
 
-class TabHost(ttk.Frame):
+class TabHost(ctk.CTkFrame):
     """带分段控制器的页签容器，接口与 Notebook.add 保持兼容。"""
 
-    def __init__(self, master, *, surface: str = "#FFFFFF") -> None:
-        super().__init__(master)
+    def __init__(self, master, *, surface: str = CARD_BG) -> None:
+        super().__init__(master, corner_radius=0, fg_color="transparent")
         self.selector = SegmentedControl(self, command=self._on_select, bg=surface)
         self.selector.pack(anchor="w", pady=(0, 14))
         self.frames: list[tk.Widget] = []
@@ -325,10 +312,7 @@ class TabHost(ttk.Frame):
         self.frames.append(frame)
         self.titles.append(text or f"页签 {len(self.frames)}")
         self.selector.set_options(self.titles)
-        if self.index < 0:
-            self._show(0)
-        else:
-            self._show(self.index)
+        self._show(self.index if self.index >= 0 else 0)
 
     def _on_select(self, index: int) -> None:
         self._show(index)
@@ -341,44 +325,30 @@ class TabHost(ttk.Frame):
         self.selector.select(index)
 
 
-class RoundedPanel(ttk.Frame):
-    """圆角卡片容器：底层画布绘制圆角背景，内容放入内部 .inner 框架。"""
+class RoundedPanel(ctk.CTkFrame):
+    """白色圆角卡片容器；内容放进 ``.inner``（保持旧接口，方便各面板使用）。"""
 
-    def __init__(self, master, *, radius: int = 12, fill: str = "#FFFFFF", border: str | None = "#E5E5EA", surface: str = "#F5F5F7", padding=12, inset: int = 4) -> None:
-        super().__init__(master)
-        self._radius = radius
-        self._fill = fill
-        self._border = border
-        self._surface = surface
-        self._inset = inset
-        self._image: tk.PhotoImage | None = None
-        self._size = (0, 0)
-        self._background = tk.Canvas(self, highlightthickness=0, bd=0, bg=surface)
-        self._background.place(x=0, y=0, relwidth=1, relheight=1)
-        self.inner = ttk.Frame(self, padding=padding)
-        self.inner.pack(fill="both", expand=True, padx=inset, pady=inset)
-        self.bind("<Configure>", self._on_configure)
-
-    def _on_configure(self, event) -> None:
-        width, height = event.width, event.height
-        if width < 10 or height < 10 or (width, height) == self._size:
-            return
-        self._size = (width, height)
-        self._image = rounded_rect_image(width, height, self._radius, self._fill, self._surface, self._border)
-        self._background.delete("panel")
-        self._background.create_image(0, 0, anchor="nw", image=self._image, tags="panel")
+    def __init__(self, master, *, radius: int = 12, fill: str = CARD_BG, border: str | None = BORDER, surface: str = "#F5F5F7", padding=12, inset: int = 4, **kwargs) -> None:
+        super().__init__(master, corner_radius=radius, fg_color=fill, border_width=1 if border else 0, border_color=border or BORDER, **kwargs)
+        pad_x, pad_y = padding if isinstance(padding, tuple) else (padding, padding)
+        self.inner = ctk.CTkFrame(self, corner_radius=0, fg_color="transparent")
+        self.inner.pack(fill="both", expand=True, padx=pad_x, pady=pad_y)
 
 
-class MultiSelectDropdown(ttk.Frame):
-    """Compact multi-select control that opens a list below the button."""
+class MultiSelectDropdown(ctk.CTkFrame):
+    """多选文件类型下拉框：按钮 + 复选列表弹窗。"""
 
     def __init__(self, master) -> None:
-        super().__init__(master)
+        super().__init__(master, corner_radius=0, fg_color="transparent")
         self.options: list[tuple[str, str]] = []
         self.selected: set[str] = set()
-        self.popup: tk.Toplevel | None = None
+        self.popup: ctk.CTkToplevel | None = None
+        self._rows: list[tuple[tk.BooleanVar, str]] = []
+        self._list: ctk.CTkScrollableFrame | None = None
         self.button = RoundedButton(self, text="请先扫描文件", variant="picker", align="w", padx=12, pady=8, command=self._open)
         self.button.pack(fill="x", expand=True)
+
+    # ------------------------------------------------------------- 外部接口
 
     def set_options(self, options: list[tuple[str, str]]) -> None:
         self._close_popup()
@@ -395,103 +365,104 @@ class MultiSelectDropdown(ttk.Frame):
     def selected_values(self) -> tuple[str, ...]:
         return tuple(value for _, value in self.options if value in self.selected)
 
+    # ------------------------------------------------------------- 弹窗构建
+
     def _open(self) -> None:
         if not self.options:
             return
-        if self.popup and self.popup.winfo_exists():
+        if self.popup is not None and self.popup.winfo_exists():
             self.popup.deiconify()
             self.popup.lift()
             self.popup.focus_force()
             return
-        popup = tk.Toplevel(self)
+        popup = ctk.CTkToplevel(self)
         self.popup = popup
         popup.title("选择文件类型")
+        popup.configure(fg_color=CARD_BG)
         popup.transient(self.winfo_toplevel())
-        popup.configure(bg="#FFFFFF")
-        popup.resizable(True, True)
-        popup.withdraw()
         x = self.button.winfo_rootx()
         y = self.button.winfo_rooty() + self.button.winfo_height() + 2
-        width = max(self.button.winfo_width(), 380)
+        width = max(self.button.winfo_width(), 400)
         x = min(x, max(0, popup.winfo_screenwidth() - width - 20))
-        popup.minsize(380, 220)
+        popup.geometry(f"{width}x420+{x}+{y}")
         popup.protocol("WM_DELETE_WINDOW", self._close_popup)
 
-        header = ttk.Frame(popup, style="Popup.TFrame", padding=(14, 12))
-        header.pack(fill="x")
-        ttk.Label(header, text="选择一个或多个文件类型", style="PopupTitle.TLabel").pack(anchor="w")
+        label(popup, "选择一个或多个文件类型", size=13, weight="bold").pack(fill="x", padx=14, pady=(12, 0))
 
-        footer = ttk.Frame(popup, style="Popup.TFrame", padding=12)
-        footer.pack(side="bottom", fill="x")
-        RoundedButton(footer, text="确定", variant="primary", padx=20, pady=7, command=lambda: self._apply(listbox)).pack(side="right")
+        footer = ctk.CTkFrame(popup, corner_radius=0, fg_color="transparent")
+        footer.pack(side="bottom", fill="x", padx=14, pady=(6, 12))
+        RoundedButton(footer, text="确定", variant="primary", padx=20, pady=7, command=self._apply).pack(side="right")
         RoundedButton(footer, text="取消", variant="secondary", padx=16, pady=7, command=self._close_popup).pack(side="right", padx=(0, 8))
 
-        quick = ttk.Frame(popup, style="Popup.TFrame", padding=(12, 10))
-        quick.pack(fill="x")
-        actions = ttk.Frame(quick, style="Popup.TFrame")
+        quick = ctk.CTkFrame(popup, corner_radius=0, fg_color="transparent")
+        quick.pack(fill="x", padx=14, pady=(10, 0))
+        actions = ctk.CTkFrame(quick, corner_radius=0, fg_color="transparent")
         actions.pack(fill="x")
-        RoundedButton(actions, text="全选", variant="link", padx=10, pady=5, command=lambda: listbox.selection_set(0, "end")).pack(side="left")
-        RoundedButton(actions, text="反选", variant="link", padx=10, pady=5, command=lambda: self._invert_selection(listbox)).pack(side="left", padx=2)
-        RoundedButton(actions, text="清空", variant="link", padx=10, pady=5, command=lambda: listbox.selection_clear(0, "end")).pack(side="left")
+        RoundedButton(actions, text="全选", variant="link", padx=10, pady=5, command=lambda: self._set_all(True)).pack(side="left")
+        RoundedButton(actions, text="反选", variant="link", padx=10, pady=5, command=self._invert).pack(side="left", padx=2)
+        RoundedButton(actions, text="清空", variant="link", padx=10, pady=5, command=lambda: self._set_all(False)).pack(side="left")
 
         group_map = self._available_groups()
         group_var = tk.StringVar(value=next(iter(group_map), ""))
-        groups = ttk.Frame(quick, style="Popup.TFrame")
+        groups = ctk.CTkFrame(quick, corner_radius=0, fg_color="transparent")
         groups.pack(fill="x", pady=(10, 0))
-        ttk.Label(groups, text="按类别：", style="PopupTitle.TLabel").pack(side="left")
-        ttk.Combobox(groups, textvariable=group_var, state="readonly", values=tuple(group_map)).pack(side="left", fill="x", expand=True)
-        RoundedButton(groups, text="选择类别", variant="primary", padx=12, pady=6, command=lambda: self._select_group(listbox, group_map.get(group_var.get(), ()))).pack(side="left", padx=(8, 0))
+        label(groups, "按类别：").pack(side="left")
+        combo(groups, variable=group_var, values=tuple(group_map)).pack(side="left", fill="x", expand=True, padx=(6, 0))
+        RoundedButton(groups, text="选择类别", variant="primary", padx=12, pady=6, command=lambda: self._select_group(group_map.get(group_var.get(), ()))).pack(side="left", padx=(8, 0))
 
-        list_frame = ttk.Frame(popup, style="Popup.TFrame", padding=(12, 0))
-        list_frame.pack(fill="both", expand=True)
-        listbox = tk.Listbox(
+        list_frame = ctk.CTkFrame(popup, corner_radius=0, fg_color="transparent")
+        list_frame.pack(fill="both", expand=True, padx=14, pady=(10, 0))
+        visible_rows = min(max(len(self.options), 4), 10)
+        self._list = ctk.CTkScrollableFrame(
             list_frame,
-            selectmode=tk.MULTIPLE,
-            exportselection=False,
-            activestyle="none",
-            borderwidth=0,
-            highlightthickness=1,
-            highlightbackground="#E5E5EA",
-            highlightcolor="#0071E3",
-            selectbackground="#0071E3",
-            selectforeground="#FFFFFF",
-            font=(FONT_FAMILY, 10),
-            height=min(max(len(self.options), 4), 12),
+            corner_radius=8,
+            fg_color=CARD_BG,
+            border_width=1,
+            border_color=BORDER,
+            height=visible_rows * 30 + 8,
+            scrollbar_button_color=SCROLL_THUMB,
+            scrollbar_button_hover_color=SCROLL_THUMB_ACTIVE,
         )
-        scrollbar = ttk.Scrollbar(list_frame, orient="vertical", command=listbox.yview)
-        listbox.configure(yscrollcommand=scrollbar.set)
-        listbox.pack(side="left", fill="both", expand=True, ipady=2)
-        scrollbar.pack(side="right", fill="y")
-        for index, (label, value) in enumerate(self.options):
-            listbox.insert("end", label)
-            if value in self.selected:
-                listbox.selection_set(index)
+        self._list.pack(fill="both", expand=True)
+        self._rows = []
+        for row_label, value in self.options:
+            variable = tk.BooleanVar(value=value in self.selected)
+            checkbox(self._list, row_label, variable).pack(fill="x", padx=8, pady=3, anchor="w")
+            self._rows.append((variable, value))
 
         popup.bind("<Escape>", lambda _event: self._close_popup())
-        popup.bind("<Return>", lambda _event: self._apply(listbox))
-        listbox.bind("<Double-Button-1>", lambda _event: self._apply(listbox))
+        popup.bind("<Return>", lambda _event: self._apply())
         popup.update_idletasks()
-        height = min(max(popup.winfo_reqheight(), 260), 560)
+        height = min(max(popup.winfo_reqheight(), 300), 640)
         y = min(y, max(0, popup.winfo_screenheight() - height - 60))
         popup.geometry(f"{width}x{height}+{x}+{y}")
-        popup.deiconify()
         popup.lift()
-        popup.focus_force()
-        listbox.focus_set()
+        popup.after(30, popup.focus_force)
 
-    def _invert_selection(self, listbox: tk.Listbox) -> None:
-        selected = set(listbox.curselection())
-        listbox.selection_clear(0, "end")
-        for index in range(listbox.size()):
-            if index not in selected:
-                listbox.selection_set(index)
+    # ------------------------------------------------------------- 选择操作
 
-    def _select_group(self, listbox: tk.Listbox, indices: tuple[int, ...]) -> None:
-        listbox.selection_clear(0, "end")
-        for index in indices:
-            listbox.selection_set(index)
-        if indices:
-            listbox.see(indices[0])
+    def _set_all(self, checked: bool) -> None:
+        for variable, _ in self._rows:
+            variable.set(checked)
+
+    def _invert(self) -> None:
+        for variable, _ in self._rows:
+            variable.set(not variable.get())
+
+    def _select_group(self, indices: tuple[int, ...]) -> None:
+        wanted = set(indices)
+        for position, (variable, _) in enumerate(self._rows):
+            variable.set(position in wanted)
+
+    def _apply(self) -> None:
+        self.selected = {value for variable, value in self._rows if variable.get()}
+        self._update_label()
+        self._close_popup()
+
+    def _close_popup(self) -> None:
+        if self.popup is not None and self.popup.winfo_exists():
+            self.popup.destroy()
+        self.popup = None
 
     def _available_groups(self) -> dict[str, tuple[int, ...]]:
         groups: dict[str, list[int]] = {name: [] for name in TYPE_GROUPS}
@@ -512,29 +483,18 @@ class MultiSelectDropdown(ttk.Frame):
             result[f"其他（{len(other)} 种）"] = tuple(other)
         return result
 
-    def _apply(self, listbox: tk.Listbox) -> None:
-        selected_indices = listbox.curselection()
-        self.selected = {self.options[index][1] for index in selected_indices}
-        self._update_label()
-        self._close_popup()
-
-    def _close_popup(self) -> None:
-        if self.popup and self.popup.winfo_exists():
-            self.popup.destroy()
-        self.popup = None
-
     def _update_label(self) -> None:
         total = len(self.options)
         count = len(self.selected)
         if total == 0:
-            label = "未扫描到文件类型"
+            text = "未扫描到文件类型"
         elif count == total:
-            label = f"全部类型（{total} 种）  ▾"
+            text = f"全部类型（{total} 种）  ▾"
         elif count == 0:
-            label = "未选择类型  ▾"
+            text = "未选择类型  ▾"
         elif count <= 2:
             names = [name.rsplit(" (", 1)[0] for name, value in self.options if value in self.selected]
-            label = f"{', '.join(names)}  ▾"
+            text = f"{', '.join(names)}  ▾"
         else:
-            label = f"已选择 {count} 种类型  ▾"
-        self.button.configure(text=label)
+            text = f"已选择 {count} 种类型  ▾"
+        self.button.configure(text=text)

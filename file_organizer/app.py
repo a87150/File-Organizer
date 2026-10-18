@@ -9,6 +9,8 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
+import customtkinter as ctk
+
 from .core import (
     STATUS_FAILED,
     STATUS_SUCCESS,
@@ -18,17 +20,35 @@ from .core import (
 )
 from .duplicates import OperationCancelled
 from .tabs import DuplicatesTabMixin, HistoryTabMixin, OrganizeTabMixin, RenameTabMixin
-from .theme import APP_BG, BORDER, FONT_FAMILY, TEXT_PRIMARY, configure_styles
+from .theme import (
+    ACCENT,
+    APP_BG,
+    CARD_BG,
+    FONT_FAMILY,
+    SCROLL_THUMB,
+    SCROLL_THUMB_ACTIVE,
+    SEGMENT_BG,
+    TEXT_SECONDARY,
+    configure_styles,
+)
 from .utils import format_size
-from .widgets import MultiSelectDropdown, RoundedButton, RoundedPanel, TabHost  # noqa: F401  (供各页签构建时使用)
+from .widgets import (  # noqa: F401  (部分供各页签构建时使用)
+    RoundedButton,
+    RoundedPanel,
+    TabHost,
+    checkbox,
+    entry,
+    label,
+    scrollbar,
+)
 
 TREE_CHUNK_SIZE = 500
 MAX_PREVIEW_ROWS = 20000
 
 
-class FileOrganizerApp(RenameTabMixin, OrganizeTabMixin, DuplicatesTabMixin, HistoryTabMixin, tk.Tk):
+class FileOrganizerApp(RenameTabMixin, OrganizeTabMixin, DuplicatesTabMixin, HistoryTabMixin, ctk.CTk):
     def __init__(self) -> None:
-        super().__init__()
+        super().__init__(fg_color=APP_BG)
         self.title("文件夹整理工具")
         self.geometry("1180x760")
         self.minsize(900, 600)
@@ -54,77 +74,52 @@ class FileOrganizerApp(RenameTabMixin, OrganizeTabMixin, DuplicatesTabMixin, His
 
     def _build_ui(self) -> None:
         configure_styles(self)
-        self.configure(bg=APP_BG)
-        root = ttk.Frame(self, padding=18, style="App.TFrame")
-        root.pack(fill="both", expand=True)
+        root = ctk.CTkFrame(self, corner_radius=0, fg_color=APP_BG)
+        root.pack(fill="both", expand=True, padx=18, pady=18)
 
-        header = ttk.Frame(root, style="App.TFrame")
-        header.pack(fill="x", pady=(0, 12))
-        ttk.Label(header, text="先筛选和预览，再安全地批量重命名、分类或清理重复文件。", style="Subtitle.TLabel").pack(anchor="w")
+        label(root, "先筛选和预览，再安全地批量重命名、分类或清理重复文件。", color=TEXT_SECONDARY).pack(anchor="w", pady=(0, 12))
 
         chooser_panel = RoundedPanel(root, padding=(12, 10))
         chooser_panel.pack(fill="x")
         chooser = chooser_panel.inner
-        ttk.Label(chooser, text="工作目录", style="Section.TLabel").pack(side="left", padx=(0, 10))
-        ttk.Entry(chooser, textvariable=self.folder_var, style="Modern.TEntry").pack(side="left", fill="x", expand=True, ipady=3)
+        label(chooser, "工作目录").pack(side="left", padx=(0, 10))
+        entry(chooser, textvariable=self.folder_var).pack(side="left", fill="x", expand=True)
         RoundedButton(chooser, text="浏览…", variant="secondary", padx=14, pady=7, command=self._choose_folder).pack(side="left", padx=(8, 0))
-        ttk.Checkbutton(chooser, text="包含子文件夹", variable=self.recursive_var).pack(side="left", padx=10)
-        ttk.Checkbutton(chooser, text="包含隐藏文件", variable=self.hidden_var).pack(side="left")
+        checkbox(chooser, "包含子文件夹", self.recursive_var).pack(side="left", padx=10)
+        checkbox(chooser, "包含隐藏文件", self.hidden_var).pack(side="left")
         self.scan_button = RoundedButton(chooser, text="扫描文件", variant="primary", padx=18, pady=7, command=self._scan)
         self.scan_button.pack(side="left", padx=(10, 0))
 
         body = ttk.Panedwindow(root, orient="horizontal")
         body.pack(fill="both", expand=True, pady=12)
 
-        left_wrap = ttk.Frame(body, style="App.TFrame", padding=(0, 0, 3, 0))
-        body.add(left_wrap, weight=1)
+        left_wrap = ctk.CTkFrame(body, corner_radius=0, fg_color=APP_BG)
+        body.add(left_wrap, weight=2)
         left_panel = RoundedPanel(left_wrap, padding=(2, 2))
-        left_panel.pack(fill="both", expand=True)
-        controls = left_panel.inner
-        controls.columnconfigure(0, weight=1)
-        controls.rowconfigure(0, weight=1)
-        control_canvas = tk.Canvas(controls, background="#FFFFFF", borderwidth=0, highlightthickness=0)
-        control_scrollbar = ttk.Scrollbar(controls, orient="vertical", command=control_canvas.yview)
-        control_canvas.configure(yscrollcommand=control_scrollbar.set)
-        control_canvas.grid(row=0, column=0, sticky="nsew")
-        control_scrollbar.grid(row=0, column=1, sticky="ns")
-        control_content = ttk.Frame(control_canvas)
-        control_window = control_canvas.create_window((0, 0), window=control_content, anchor="nw")
+        left_panel.pack(fill="both", expand=True, padx=(0, 3))
+        self.left_scroll = ctk.CTkScrollableFrame(
+            left_panel.inner,
+            corner_radius=0,
+            fg_color=CARD_BG,
+            width=380,
+            scrollbar_button_color=SCROLL_THUMB,
+            scrollbar_button_hover_color=SCROLL_THUMB_ACTIVE,
+        )
+        self.left_scroll.pack(fill="both", expand=True)
 
-        def refresh_scrollregion(_event=None) -> None:
-            bounds = control_canvas.bbox("all")
-            if bounds is None:
-                return
-            control_canvas.configure(
-                scrollregion=(
-                    0,
-                    0,
-                    max(bounds[2], control_canvas.winfo_width()),
-                    max(bounds[3], control_canvas.winfo_height()),
-                )
-            )
-
-        def resize_control_window(event) -> None:
-            control_canvas.itemconfigure(control_window, width=event.width)
-            refresh_scrollregion()
-
-        control_content.bind("<Configure>", refresh_scrollregion)
-        control_canvas.bind("<Configure>", resize_control_window)
-        self.bind_all("<MouseWheel>", lambda event: self._scroll_left_panel(event, control_canvas), add="+")
-
-        self.tab_host = TabHost(control_content)
+        self.tab_host = TabHost(self.left_scroll)
         self.tab_host.pack(fill="both", expand=True)
         self._build_rename_tab(self.tab_host)
         self._build_organize_tab(self.tab_host)
         self._build_duplicates_tab(self.tab_host)
         self._build_history_tab(self.tab_host)
 
-        preview_wrap = ttk.Frame(body, style="App.TFrame", padding=(3, 0, 0, 0))
+        preview_wrap = ctk.CTkFrame(body, corner_radius=0, fg_color=APP_BG)
         body.add(preview_wrap, weight=3)
         preview_panel = RoundedPanel(preview_wrap, padding=(12, 10))
-        preview_panel.pack(fill="both", expand=True)
+        preview_panel.pack(fill="both", expand=True, padx=(3, 0))
         preview = preview_panel.inner
-        ttk.Label(preview, text="文件与操作预览", style="Section.TLabel").grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 8))
+        label(preview, "文件与操作预览", size=13, weight="bold").grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 8))
         columns = ("status", "source", "destination", "size")
         self.tree = ttk.Treeview(preview, columns=columns, show="headings", selectmode="extended")
         self.tree.tag_configure("match", foreground="#0071E3")
@@ -137,28 +132,27 @@ class FileOrganizerApp(RenameTabMixin, OrganizeTabMixin, DuplicatesTabMixin, His
         self.tree.tag_configure("keep", foreground="#248A3D")
         self.tree.tag_configure("candidate", foreground="#B25000")
         headings = {"status": "状态", "source": "原文件", "destination": "目标位置", "size": "大小"}
-        widths = {"status": 70, "source": 280, "destination": 330, "size": 90}
+        widths = {"status": 62, "source": 260, "destination": 300, "size": 88}
         for col in columns:
             self.tree.heading(col, text=headings[col])
             self.tree.column(col, width=widths[col], anchor="w")
-        ybar = ttk.Scrollbar(preview, orient="vertical", command=self.tree.yview)
-        xbar = ttk.Scrollbar(preview, orient="horizontal", command=self.tree.xview)
+        ybar = scrollbar(preview, orientation="vertical", command=self.tree.yview)
+        xbar = scrollbar(preview, orientation="horizontal", command=self.tree.xview, height=12)
         self.tree.configure(yscrollcommand=ybar.set, xscrollcommand=xbar.set)
         self.tree.grid(row=1, column=0, sticky="nsew")
-        ybar.grid(row=1, column=1, sticky="ns")
-        xbar.grid(row=2, column=0, sticky="ew")
+        ybar.grid(row=1, column=1, sticky="ns", padx=(6, 0))
+        xbar.grid(row=2, column=0, sticky="ew", pady=(6, 0))
         preview.rowconfigure(1, weight=1)
         preview.columnconfigure(0, weight=1)
 
         bottom_panel = RoundedPanel(root, padding=(14, 10))
         bottom_panel.pack(fill="x")
         bottom = bottom_panel.inner
-        ttk.Label(bottom, text="●", style="StatusDot.TLabel").pack(side="left", padx=(0, 7))
-        ttk.Label(bottom, textvariable=self.status_var, style="Status.TLabel").pack(side="left")
-        right_bar = ttk.Frame(bottom, style="Status.TFrame")
+        label(bottom, "●", color=ACCENT).pack(side="left", padx=(0, 7))
+        label(bottom, textvariable=self.status_var, color=TEXT_SECONDARY).pack(side="left")
+        right_bar = ctk.CTkFrame(bottom, corner_radius=0, fg_color="transparent")
         right_bar.pack(side="right")
-        self.progress = ttk.Progressbar(right_bar, mode="indeterminate", length=160)
-        self.progress.pack(side="left", padx=(0, 14))
+        self.progress = ctk.CTkProgressBar(right_bar, width=160, height=6, corner_radius=3, fg_color=SEGMENT_BG, progress_color=ACCENT, mode="indeterminate")
         self.execute_btn = RoundedButton(right_bar, text="执行预览操作", variant="primary", padx=20, pady=8, command=self._execute, state="disabled")
         self.execute_btn.pack(side="left")
         self.cancel_button = RoundedButton(right_bar, text="取消", variant="secondary", padx=16, pady=8, command=self._cancel_current)
@@ -248,12 +242,12 @@ class FileOrganizerApp(RenameTabMixin, OrganizeTabMixin, DuplicatesTabMixin, His
 
     def _reset_progress(self, start: bool = False) -> None:
         self.progress.stop()
-        self.progress["value"] = 0
+        self.progress.set(0)
         self.progress.configure(mode="indeterminate" if start else "determinate")
         if start:
             if not self.progress.winfo_ismapped():
                 self.progress.pack(side="left", padx=(0, 14), before=self.execute_btn)
-            self.progress.start(10)
+            self.progress.start()
         else:
             self.progress.pack_forget()
 
@@ -265,8 +259,8 @@ class FileOrganizerApp(RenameTabMixin, OrganizeTabMixin, DuplicatesTabMixin, His
                     label, value, total = payload
                     maximum = max(total, 1)
                     self.progress.stop()
-                    self.progress.configure(mode="determinate", maximum=maximum)
-                    self.progress["value"] = value
+                    self.progress.configure(mode="determinate")
+                    self.progress.set(min(value / maximum, 1.0))
                     percent = min(99, value * 100 // maximum)
                     self.status_var.set(f"{label} {percent}%")
                     continue
@@ -425,17 +419,6 @@ class FileOrganizerApp(RenameTabMixin, OrganizeTabMixin, DuplicatesTabMixin, His
             messagebox.showinfo("提示", "请先扫描一个包含文件的目录。")
             return False
         return True
-
-    def _scroll_left_panel(self, event, canvas: tk.Canvas) -> str | None:
-        target = self.winfo_containing(self.winfo_pointerx(), self.winfo_pointery())
-        if target is None or target.winfo_toplevel() is not self:
-            return None
-        while target is not None and target is not canvas:
-            target = getattr(target, "master", None)
-        if target is canvas:
-            canvas.yview_scroll(-2 if event.delta > 0 else 2, "units")
-            return "break"
-        return None
 
     # ------------------------------------------------------------------ 输入解析
 
