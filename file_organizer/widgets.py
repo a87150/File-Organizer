@@ -485,7 +485,7 @@ class MultiSelectDropdown(ctk.CTkFrame):
         RoundedButton(actions, text="反选", variant="link", padx=10, pady=5, command=self._invert).pack(side="left", padx=2)
         RoundedButton(actions, text="清空", variant="link", padx=10, pady=5, command=lambda: self._set_all(False)).pack(side="left")
 
-        group_map = self._available_groups()
+        group_map = self._category_choices()
         group_var = tk.StringVar(value=next(iter(group_map), ""))
         groups = ctk.CTkFrame(quick, corner_radius=0, fg_color="transparent")
         groups.pack(fill="x", pady=(10, 0))
@@ -552,6 +552,11 @@ class MultiSelectDropdown(ctk.CTkFrame):
         if self.popup is not None and self.popup.winfo_exists():
             self.popup.destroy()
         self.popup = None
+
+    def _category_choices(self) -> dict[str, tuple[int, ...]]:
+        """“按类别”下拉的选项：默认就是「全部类型」，后面才是各类型分组。"""
+        all_indices = tuple(range(len(self.options)))
+        return {f"全部类型（{len(self.options)} 种）": all_indices, **self._available_groups()}
 
     def _available_groups(self) -> dict[str, tuple[int, ...]]:
         groups: dict[str, list[int]] = {name: [] for name in TYPE_GROUPS}
