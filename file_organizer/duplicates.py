@@ -304,13 +304,48 @@ def confirm_hash_groups(
     return confirmed, hashed_files, meter.done
 
 
+def _trim_size_diameter(
+    groups: Iterable[Iterable[Path]],
+    size_of: dict[Path, int],
+    tolerance_percent: float,
+    tolerance_bytes: int,
+) -> list[list[Path]]:
+    """按“组内最大最小之差不超过容差”再细分一次。
+
+    链式合并（a≈b、b≈c）会把 a 和 c 并到一组，这里保证同一组里任意两个文件的
+    大小差距都在容差范围内。
+    """
+    result: list[list[Path]] = []
+    for members in groups:
+        ordered = sorted(members, key=lambda path: (size_of.get(path, 0), str(path).casefold()))
+        chunk: list[Path] = []
+        limit = 0.0
+        for path in ordered:
+            size = size_of.get(path, 0)
+            if chunk and size > limit:
+                if len(chunk) > 1:
+                    result.append(chunk)
+                chunk = []
+            if not chunk:
+                limit = size + max(tolerance_bytes, size * tolerance_percent / 100.0)
+            chunk.append(path)
+        if len(chunk) > 1:
+            result.append(chunk)
+    return result
+
+
 def find_duplicates(
     files: Iterable[Path],
     options: DuplicateOptions,
     progress: ProgressCallback | None = None,
     cancelled: CancelCheck | None = None,
 ) -> DuplicateResult:
-    """执行重复/相似文件查找，返回按 hash → size → name 排序的分组结果。"""
+    """执行重复/相似文件查找。
+
+    勾选的多项查找方式会叠加生效：先用最可靠的一项初筛，再用其余条件逐层细分，
+    只保留仍有两个及以上成员的分组。例如同时勾选“文件名相似”和“大小接近”时，
+    组内文件必须名字相似，且大小差距也在容差范围内。
+    """
     started = time.perf_counter()
     entries: list[tuple[Path, int, str]] = []
     for path in sorted(set(files), key=lambda item: str(item).casefold()):
@@ -320,44 +355,63 @@ def find_duplicates(
             continue
         entries.append((path, stat.st_size, path.suffix.casefold()))
     size_of = {path: size for path, size, _ in entries}
+    extension_of = {path: extension for path, _, extension in entries}
 
-    groups: list[DuplicateGroup] = []
+    groups: list[list[Path]] = []
     hashed_files = 0
     hashed_bytes = 0
+    refined: set[str] = set()
 
     if options.hash_enabled:
-        hash_groups, hashed_files, hashed_bytes = confirm_hash_groups(entries, progress=progress, cancelled=cancelled)
-        groups.extend(_make_groups("hash", hash_groups, size_of))
-    if options.size_enabled:
-        size_groups = find_size_groups(
+        # 内容完全相同 ⇒ 大小必然相同，哈希优先时无需再按大小细分。
+        confirmed, hashed_files, hashed_bytes = confirm_hash_groups(entries, progress=progress, cancelled=cancelled)
+        groups = [list(members) for members in confirmed]
+        refined.update(("hash", "size"))
+    elif options.size_enabled:
+        groups = find_size_groups(
             entries,
             options.size_tolerance_percent,
             options.size_tolerance_bytes,
             progress=progress,
             cancelled=cancelled,
         )
-        groups.extend(_make_groups("size", size_groups, size_of))
-    if options.name_enabled:
-        name_groups = find_name_groups(
+        refined.add("size")
+    elif options.name_enabled:
+        groups = find_name_groups(
             (path for path, _, _ in entries),
             options.name_threshold,
             progress=progress,
             cancelled=cancelled,
         )
-        groups.extend(_make_groups("name", name_groups, size_of))
+        refined.add("name")
+
+    if options.size_enabled and "size" not in refined:
+        groups = [
+            chunk
+            for members in groups
+            for chunk in find_size_groups(
+                [(path, size_of.get(path, 0), extension_of.get(path, "")) for path in members],
+                options.size_tolerance_percent,
+                options.size_tolerance_bytes,
+                cancelled=cancelled,
+            )
+        ]
+    if options.name_enabled and "name" not in refined:
+        groups = [
+            chunk
+            for members in groups
+            for chunk in find_name_groups(members, options.name_threshold, cancelled=cancelled)
+        ]
+    if options.size_enabled:
+        groups = _trim_size_diameter(groups, size_of, options.size_tolerance_percent, options.size_tolerance_bytes)
+
+    kind: DuplicateKind = "hash" if options.hash_enabled else ("name" if options.name_enabled else "size")
+    made = [DuplicateGroup(kind, tuple(members), tuple(size_of.get(path, 0) for path in members)) for members in groups if len(members) > 1]
 
     return DuplicateResult(
-        groups=tuple(groups),
+        groups=tuple(made),
         files_scanned=len(entries),
         hashed_files=hashed_files,
         hashed_bytes=hashed_bytes,
         elapsed=time.perf_counter() - started,
     )
-
-
-def _make_groups(kind: DuplicateKind, member_lists: Iterable[Iterable[Path]], size_of: dict[Path, int]) -> list[DuplicateGroup]:
-    made: list[DuplicateGroup] = []
-    for members in member_lists:
-        paths = tuple(members)
-        made.append(DuplicateGroup(kind, paths, tuple(size_of.get(path, 0) for path in paths)))
-    return made

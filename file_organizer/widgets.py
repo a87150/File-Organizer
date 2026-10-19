@@ -490,10 +490,14 @@ class MultiSelectDropdown(ctk.CTkFrame):
         groups = ctk.CTkFrame(quick, corner_radius=0, fg_color="transparent")
         groups.pack(fill="x", pady=(10, 0))
         label(groups, "按类别").pack(side="left")
-        category_box = combo(groups, variable=group_var, values=tuple(group_map))
+        category_box = combo(
+            groups,
+            variable=group_var,
+            values=tuple(group_map),
+            # CustomTkinter 不抛 <<ComboboxSelected>>，必须用 command 回调：选中类别即直接勾选。
+            command=lambda value: self._select_group(group_map.get(value, ())),
+        )
         category_box.pack(side="left", fill="x", expand=True, padx=(8, 0))
-        # 选中类别即直接勾选该类别的类型，无需再点按钮确认。
-        category_box.bind("<<ComboboxSelected>>", lambda _event: self._select_group(group_map.get(group_var.get(), ())))
 
         list_frame = ctk.CTkFrame(popup, corner_radius=0, fg_color="transparent")
         list_frame.pack(fill="both", expand=True, padx=14, pady=(10, 0))

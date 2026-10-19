@@ -93,6 +93,27 @@ class DuplicateFinderTests(unittest.TestCase):
         separate = find_size_groups(entries, 0.0, 4)
         self.assertEqual(separate, [])
 
+    def test_name_and_size_stack(self):
+        # 叠加：同时勾选“文件名相似”和“大小接近”时，大小差距大的文件不再成组
+        first = self.make_file("song_a.mp3", b"a" * 1000)
+        big = self.make_file("song_b.mp3", b"b" * 4000)
+        peer = self.make_file("song_c.mp3", b"c" * 1000)
+        result = self.engine.find_duplicates([first, big, peer], DuplicateOptions(name_threshold=0.75))
+        self.assertEqual(len(result.groups), 1)
+        self.assertEqual(set(result.groups[0].members), {first, peer})
+
+    def test_size_diameter_trim(self):
+        # 链式合并（100≈105≈111）不应把大小差距超过容差的文件并进同一组
+        first = self.make_file("t1.bin", b"a" * 100)
+        second = self.make_file("t2.bin", b"b" * 105)
+        third = self.make_file("t3.bin", b"c" * 111)
+        result = self.engine.find_duplicates(
+            [first, second, third],
+            DuplicateOptions(name_enabled=False, size_enabled=True, hash_enabled=False, size_tolerance_bytes=10),
+        )
+        groups = {frozenset(group.members) for group in result.groups}
+        self.assertEqual(groups, {frozenset({first, second})})
+
     def test_cleanup_keeper_oldest(self):
         old = self.make_file("dup_old.bin", b"same")
         new_first = self.make_file("dup_new1.bin", b"same")

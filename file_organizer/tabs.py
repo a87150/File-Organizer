@@ -26,7 +26,6 @@ from .widgets import (
 )
 
 KIND_DISPLAY = {"name": "文件名相似", "size": "大小接近", "hash": "字节相同"}
-KIND_LABELS = (("文件名相似", "name"), ("大小接近", "size"), ("字节相同", "hash"))
 KEEPER_LABELS = (
     ("保留最早修改", "oldest"),
     ("保留最新修改", "newest"),
@@ -257,7 +256,7 @@ class DuplicatesTabMixin:
         self.dup_min_size_var = tk.StringVar()
         self.dup_max_size_var = tk.StringVar()
         self.dup_result: DuplicateResult | None = None
-        self.dup_kind_vars: dict[str, tk.BooleanVar] = {}
+        self.dup_match_label = ""
         self.dup_keeper_var = tk.StringVar(value=KEEPER_LABELS[0][0])
 
         find_box = section(tab, "第 1 步：查找重复或相似文件")
@@ -292,23 +291,15 @@ class DuplicatesTabMixin:
         entry(dup_sizes, textvariable=self.dup_max_size_var, width=7).pack(side="left")
 
         RoundedButton(find_box, text="1. 查找重复/相似文件", variant="primary", command=self._find_duplicates).grid(row=5, column=0, columnspan=2, sticky="ew", pady=(12, 2))
-        hint(find_box, "查找不会修改任何文件；哈希确认只读取文件内容。大小范围留空表示不限制。").grid(row=6, column=0, columnspan=2, sticky="w", pady=(6, 0))
+        hint(find_box, "勾选的查找方式会叠加生效：只保留同时满足全部分组。查找只读取文件，不会修改；大小范围留空表示不限制。").grid(row=6, column=0, columnspan=2, sticky="w", pady=(6, 0))
         form_grid(find_box)
 
         clean_box = section(tab, "第 2 步：生成清理预览", pady=(10, 0))
-        label(clean_box, "参与清理的分组类型").pack(anchor="w")
-        kinds_row = ctk.CTkFrame(clean_box, corner_radius=0, fg_color="transparent")
-        kinds_row.pack(fill="x", pady=(6, 0))
-        for kind_label, kind in KIND_LABELS:
-            variable = tk.BooleanVar(value=(kind == "hash"))
-            self.dup_kind_vars[kind] = variable
-            checkbox(kinds_row, kind_label, variable).pack(side="left", padx=(0, 14))
         keeper_row = ctk.CTkFrame(clean_box, corner_radius=0, fg_color="transparent")
         keeper_row.pack(fill="x", pady=(10, 0))
         label(keeper_row, "每组保留").pack(side="left")
-        keeper_box = combo(keeper_row, variable=self.dup_keeper_var, values=tuple(label for label, _ in KEEPER_LABELS))
+        keeper_box = combo(keeper_row, variable=self.dup_keeper_var, values=tuple(label for label, _ in KEEPER_LABELS), command=self._on_keeper_changed)
         keeper_box.pack(side="left", fill="x", expand=True, padx=(8, 0))
-        keeper_box.bind("<<ComboboxSelected>>", self._on_keeper_changed)
         RoundedButton(clean_box, text="2. 生成清理预览", variant="primary", command=self._preview_duplicate_cleanup).pack(fill="x", pady=(12, 2))
         hint(clean_box, "清理会把“保留”以外的文件移动到 工作目录/重复文件/组N/，可在“历史与撤销”中恢复。").pack(anchor="w")
 
@@ -341,6 +332,15 @@ class DuplicatesTabMixin:
         extensions = () if len(selected) == total else selected
         return self.engine.filter_files(self.files, SearchOptions(extensions=extensions, min_size_mb=minimum, max_size_mb=maximum))
 
+    def _current_match_label(self) -> str:
+        """当前勾选的查找方式（叠加）文本，用于结果里的分组标题。"""
+        parts = [
+            KIND_DISPLAY[kind]
+            for kind, variable in (("name", self.dup_name_var), ("size", self.dup_size_var), ("hash", self.dup_hash_var))
+            if variable.get()
+        ]
+        return " + ".join(parts) if parts else "重复/相似文件"
+
     def _find_duplicates(self) -> None:
         if not self._ensure_files():
             return
@@ -353,6 +353,7 @@ class DuplicatesTabMixin:
         if not candidates:
             messagebox.showinfo("提示", "当前条件没有可查找的文件。")
             return
+        self.dup_match_label = self._current_match_label()
         self._run_background(
             "正在查找重复文件…",
             lambda: (
@@ -372,17 +373,15 @@ class DuplicatesTabMixin:
             messagebox.showinfo("完成", "没有找到重复或相似的文件。")
             return
         keeper = self._current_keeper()
+        match_label = self.dup_match_label or "重复/相似文件"
         rows = []
-        for kind in ("hash", "size", "name"):
-            kind_groups = [group for group in result.groups if group.kind == kind]
-            for index, group in enumerate(kind_groups, 1):
-                label = KIND_DISPLAY[kind]
-                rows.append((("分组", f"{label} · 第 {index} 组 · {len(group.members)} 个文件", "", format_size(group.total_size)), (f"dup-{kind}",), None, None))
-                size_of = dict(zip(group.members, group.sizes))
-                for position, member in enumerate(order_group_members(group.members, keeper)):
-                    status = "保留" if position == 0 else "候选"
-                    tag = ("keep",) if position == 0 else ("candidate",)
-                    rows.append(((status, self._relative(member), "", format_size(size_of.get(member, 0))), tag, None, None))
+        for index, group in enumerate(result.groups, 1):
+            rows.append((("分组", f"{match_label} · 第 {index} 组 · {len(group.members)} 个文件", "", format_size(group.total_size)), (f"dup-{group.kind}",), None, None))
+            size_of = dict(zip(group.members, group.sizes))
+            for position, member in enumerate(order_group_members(group.members, keeper)):
+                status = "保留" if position == 0 else "候选"
+                tag = ("keep",) if position == 0 else ("candidate",)
+                rows.append(((status, self._relative(member), "", format_size(size_of.get(member, 0))), tag, None, None))
         self._populate_tree(rows)
         reclaim = sum(group.reclaimable_bytes for group in result.groups)
         note = self._truncation_note(len(rows))
@@ -401,10 +400,7 @@ class DuplicatesTabMixin:
         if self.dup_result is None or not self.dup_result.groups:
             messagebox.showinfo("提示", "请先在第 1 步查找重复文件。")
             return
-        kinds = tuple(kind for kind, variable in self.dup_kind_vars.items() if variable.get())
-        if not kinds:
-            messagebox.showerror("无法清理", "请至少选择一种参与清理的分组类型。")
-            return
+        kinds = tuple(dict.fromkeys(group.kind for group in self.dup_result.groups))
         try:
             options = CleanupOptions(kinds=kinds, keeper=self._current_keeper())
             actions = self.engine.preview_duplicate_cleanup(self.dup_result.groups, self._current_root(), options)
