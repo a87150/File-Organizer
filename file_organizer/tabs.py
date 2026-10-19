@@ -11,11 +11,13 @@ from .duplicates import DuplicateOptions, DuplicateResult, order_group_members
 from .utils import format_size
 from .widgets import (
     MultiSelectDropdown,
+    ROW_PADY,
     RoundedButton,
     TabHost,
     checkbox,
     combo,
     entry,
+    form_grid,
     hint,
     label,
     radio,
@@ -46,29 +48,29 @@ class RenameTabMixin:
         self.time_preset_var = tk.StringVar(value="全部时间")
         self.search_date_from_var = tk.StringVar()
         self.search_date_to_var = tk.StringVar()
-        label(search_box, "文件名包含/正则").grid(row=0, column=0, sticky="w", pady=3)
-        entry(search_box, textvariable=self.search_name_var).grid(row=0, column=1, sticky="ew", pady=3)
-        checkbox(search_box, "使用正则", self.search_regex_var).grid(row=1, column=0, columnspan=2, sticky="w", pady=3)
-        label(search_box, "扫描到的类型").grid(row=2, column=0, sticky="w", pady=3)
+        label(search_box, "文件名包含/正则").grid(row=0, column=0, sticky="w", pady=ROW_PADY)
+        entry(search_box, textvariable=self.search_name_var).grid(row=0, column=1, sticky="ew", pady=ROW_PADY)
+        checkbox(search_box, "使用正则", self.search_regex_var).grid(row=1, column=0, columnspan=2, sticky="w", pady=ROW_PADY)
+        label(search_box, "文件类型").grid(row=2, column=0, sticky="w", pady=ROW_PADY)
         self.search_type_picker = MultiSelectDropdown(search_box)
-        self.search_type_picker.grid(row=2, column=1, sticky="ew", pady=3)
-        label(search_box, "大小范围 MB").grid(row=3, column=0, sticky="w", pady=3)
+        self.search_type_picker.grid(row=2, column=1, sticky="ew", pady=ROW_PADY)
+        label(search_box, "大小范围 MB").grid(row=3, column=0, sticky="w", pady=ROW_PADY)
         sizes = ctk.CTkFrame(search_box, corner_radius=0, fg_color="transparent")
-        sizes.grid(row=3, column=1, sticky="ew")
+        sizes.grid(row=3, column=1, sticky="ew", pady=ROW_PADY)
         entry(sizes, textvariable=self.search_min_var, width=7).pack(side="left")
         label(sizes, " 至 ").pack(side="left")
         entry(sizes, textvariable=self.search_max_var, width=7).pack(side="left")
-        label(search_box, "修改时间").grid(row=4, column=0, sticky="w", pady=3)
-        combo(search_box, variable=self.time_preset_var, values=("全部时间", "今天", "最近7天", "最近30天", "本月", "自定义")).grid(row=4, column=1, sticky="ew", pady=3)
-        label(search_box, "自定义日期").grid(row=5, column=0, sticky="w", pady=3)
+        label(search_box, "修改时间").grid(row=4, column=0, sticky="w", pady=ROW_PADY)
+        combo(search_box, variable=self.time_preset_var, values=("全部时间", "今天", "最近7天", "最近30天", "本月", "自定义")).grid(row=4, column=1, sticky="ew", pady=ROW_PADY)
+        label(search_box, "自定义日期").grid(row=5, column=0, sticky="w", pady=ROW_PADY)
         dates = ctk.CTkFrame(search_box, corner_radius=0, fg_color="transparent")
-        dates.grid(row=5, column=1, sticky="ew")
+        dates.grid(row=5, column=1, sticky="ew", pady=ROW_PADY)
         entry(dates, textvariable=self.search_date_from_var, width=10).pack(side="left")
         label(dates, " 至 ").pack(side="left")
         entry(dates, textvariable=self.search_date_to_var, width=10).pack(side="left")
-        RoundedButton(search_box, text="1. 搜索并显示匹配文件", variant="primary", command=self._search_rename_files).grid(row=6, column=0, columnspan=2, sticky="ew", pady=(8, 0))
-        hint(search_box, "自定义日期格式：YYYY-MM-DD；可只填写一端。").grid(row=7, column=0, columnspan=2, sticky="w", pady=(4, 0))
-        search_box.columnconfigure(1, weight=1)
+        RoundedButton(search_box, text="1. 搜索并显示匹配文件", variant="primary", command=self._search_rename_files).grid(row=6, column=0, columnspan=2, sticky="ew", pady=(10, 2))
+        hint(search_box, "自定义日期格式：YYYY-MM-DD；可只填写一端。").grid(row=7, column=0, columnspan=2, sticky="w", pady=(6, 0))
+        form_grid(search_box)
 
         rename_box = section(tab, "第 2 步：设置重命名规则", fill="both", expand=True, pady=(10, 0))
         self.prefix_var = tk.StringVar()
@@ -83,22 +85,22 @@ class RenameTabMixin:
         self.new_extension_var = tk.StringVar()
         fields = [("前缀", self.prefix_var), ("后缀（扩展名前）", self.suffix_var), ("查找", self.find_var), ("替换为", self.replace_var), ("新扩展名", self.new_extension_var)]
         for row, (text, variable) in enumerate(fields):
-            label(rename_box, text).grid(row=row, column=0, sticky="w", pady=3)
-            entry(rename_box, textvariable=variable).grid(row=row, column=1, sticky="ew", pady=3)
-        hint(rename_box, "新扩展名留空则保留原扩展名，例如填写 pdf 或 .pdf。").grid(row=5, column=0, columnspan=2, sticky="w")
-        checkbox(rename_box, "查找内容使用正则表达式", self.regex_var).grid(row=6, column=0, columnspan=2, sticky="w", pady=3)
-        label(rename_box, "大小写").grid(row=7, column=0, sticky="w", pady=3)
-        combo(rename_box, variable=self.case_var, values=("keep", "lower", "upper", "title")).grid(row=7, column=1, sticky="ew")
-        checkbox(rename_box, "添加序号", self.counter_var).grid(row=8, column=0, sticky="w", pady=3)
+            label(rename_box, text).grid(row=row, column=0, sticky="w", pady=ROW_PADY)
+            entry(rename_box, textvariable=variable).grid(row=row, column=1, sticky="ew", pady=ROW_PADY)
+        hint(rename_box, "新扩展名留空则保留原扩展名，例如填写 pdf 或 .pdf。").grid(row=5, column=0, columnspan=2, sticky="w", pady=(2, 0))
+        checkbox(rename_box, "查找内容使用正则表达式", self.regex_var).grid(row=6, column=0, columnspan=2, sticky="w", pady=ROW_PADY)
+        label(rename_box, "大小写").grid(row=7, column=0, sticky="w", pady=ROW_PADY)
+        combo(rename_box, variable=self.case_var, values=("keep", "lower", "upper", "title")).grid(row=7, column=1, sticky="ew", pady=ROW_PADY)
+        checkbox(rename_box, "添加序号", self.counter_var).grid(row=8, column=0, sticky="w", pady=ROW_PADY)
         counter = ctk.CTkFrame(rename_box, corner_radius=0, fg_color="transparent")
-        counter.grid(row=8, column=1, sticky="ew")
+        counter.grid(row=9, column=1, sticky="ew", pady=ROW_PADY)
         label(counter, "起始").pack(side="left")
-        entry(counter, textvariable=self.counter_start_var, width=6).pack(side="left", padx=4)
-        label(counter, "位数").pack(side="left")
-        entry(counter, textvariable=self.counter_width_var, width=4).pack(side="left", padx=4)
-        RoundedButton(rename_box, text="2. 生成匹配文件的重命名预览", variant="primary", command=self._preview_rename).grid(row=9, column=0, columnspan=2, sticky="ew", pady=(10, 4))
-        hint(rename_box, "重名时自动追加 (1)、(2)…").grid(row=10, column=0, columnspan=2, sticky="w")
-        rename_box.columnconfigure(1, weight=1)
+        entry(counter, textvariable=self.counter_start_var, width=6).pack(side="left", padx=6)
+        label(counter, "位数").pack(side="left", padx=(6, 0))
+        entry(counter, textvariable=self.counter_width_var, width=4).pack(side="left", padx=6)
+        RoundedButton(rename_box, text="2. 生成匹配文件的重命名预览", variant="primary", command=self._preview_rename).grid(row=10, column=0, columnspan=2, sticky="ew", pady=(12, 2))
+        hint(rename_box, "重名时自动追加 (1)、(2)…").grid(row=11, column=0, columnspan=2, sticky="w")
+        form_grid(rename_box)
 
     def _search_rename_files(self) -> None:
         if not self._ensure_files():
@@ -153,26 +155,33 @@ class OrganizeTabMixin:
         notebook.add(tab, text="分类整理")
         self.mode_var = tk.StringVar(value="type")
         self.other_var = tk.BooleanVar(value=True)
-        label(tab, "分类方式").pack(anchor="w")
+
+        mode_box = section(tab, "第 1 步：选择分类方式")
         modes = (("按文件类型分组", "type"), ("按扩展名", "extension"), ("按文件名关键词", "name"), ("提取文件名的一部分", "extract"), ("按修改年月", "date"), ("按文件大小", "size"))
         for text, value in modes:
-            radio(tab, text, self.mode_var, value).pack(anchor="w", pady=2)
-        label(tab, "名称规则（每行：关键词 => 子文件夹）").pack(anchor="w", pady=(12, 4))
-        self.rules_text = textbox(tab, height=150)
-        self.rules_text.pack(fill="both", expand=True)
+            radio(mode_box, text, self.mode_var, value).pack(anchor="w", pady=3)
+        checkbox(mode_box, "未匹配的文件放入“其他”", self.other_var).pack(anchor="w", pady=(10, 0))
+
+        rules_box = section(tab, "第 2 步：设置分类规则", fill="both", expand=True, pady=(10, 0))
+        label(rules_box, "名称规则（每行：关键词 => 子文件夹）").pack(anchor="w")
+        self.rules_text = textbox(rules_box, height=130)
+        self.rules_text.pack(fill="both", expand=True, pady=(6, 10))
         self.rules_text.insert("1.0", "发票 => 发票\n合同 => 合同\n截图 => 截图")
-        extract_box = section(tab, "文件名提取规则", pady=(8, 0))
+
+        label(rules_box, "文件名提取规则", size=12, weight="bold").pack(anchor="w", pady=(2, 0))
+        extract_box = ctk.CTkFrame(rules_box, corner_radius=0, fg_color="transparent")
+        extract_box.pack(fill="x", pady=(6, 0))
         self.extract_pattern_var = tk.StringVar(value=r"^([^_]+)_")
         self.extract_group_var = tk.StringVar(value="1")
-        label(extract_box, "正则表达式").grid(row=0, column=0, sticky="w")
-        entry(extract_box, textvariable=self.extract_pattern_var).grid(row=0, column=1, sticky="ew", pady=3)
-        label(extract_box, "捕获组").grid(row=1, column=0, sticky="w", pady=(4, 0))
-        entry(extract_box, textvariable=self.extract_group_var, width=8).grid(row=1, column=1, sticky="w", pady=(4, 0))
+        label(extract_box, "正则表达式").grid(row=0, column=0, sticky="w", pady=ROW_PADY)
+        entry(extract_box, textvariable=self.extract_pattern_var).grid(row=0, column=1, sticky="ew", pady=ROW_PADY)
+        label(extract_box, "捕获组").grid(row=1, column=0, sticky="w", pady=ROW_PADY)
+        entry(extract_box, textvariable=self.extract_group_var, width=8).grid(row=1, column=1, sticky="w", pady=ROW_PADY)
         hint(extract_box, "例：项目A_合同.pdf → 提取“项目A”并创建同名子文件夹", wraplength=270).grid(row=2, column=0, columnspan=2, sticky="w", pady=(4, 0))
-        extract_box.columnconfigure(1, weight=1)
-        checkbox(tab, "未匹配文件放入“其他”", self.other_var).pack(anchor="w", pady=8)
-        RoundedButton(tab, text="生成分类预览", variant="primary", command=self._preview_organize).pack(fill="x", pady=4)
-        hint(tab, "分类会在所选工作目录内创建子文件夹。").pack(anchor="w", pady=4)
+        form_grid(extract_box)
+
+        RoundedButton(rules_box, text="生成分类预览", variant="primary", command=self._preview_organize).pack(fill="x", pady=(14, 2))
+        hint(rules_box, "分类会在所选工作目录内创建子文件夹。").pack(anchor="w", pady=(4, 0))
 
     def _preview_organize(self) -> None:
         if not self._ensure_files():
@@ -194,9 +203,10 @@ class HistoryTabMixin:
     def _build_history_tab(self, notebook: TabHost) -> None:
         tab = ctk.CTkFrame(notebook, corner_radius=0, fg_color="transparent")
         notebook.add(tab, text="历史")
-        hint(tab, "每次成功操作都会生成 JSON 日志。可选择日志撤销对应操作。").pack(anchor="w", pady=(0, 12))
-        RoundedButton(tab, text="撤销上一次操作", variant="secondary", command=self._undo_last).pack(fill="x", pady=4)
-        RoundedButton(tab, text="选择日志并撤销…", variant="secondary", command=self._undo_choose).pack(fill="x", pady=4)
+        undo_box = section(tab, "历史与撤销")
+        hint(undo_box, "每次成功操作都会生成 JSON 日志，可选择日志撤销对应操作。").pack(anchor="w", pady=(0, 10))
+        RoundedButton(undo_box, text="撤销上一次操作", variant="secondary", command=self._undo_last).pack(fill="x", pady=(0, 6))
+        RoundedButton(undo_box, text="选择日志并撤销…", variant="secondary", command=self._undo_choose).pack(fill="x")
 
     def _undo_last(self) -> None:
         log_dir = self._current_root() / ".file_organizer_logs"
@@ -244,7 +254,8 @@ class DuplicatesTabMixin:
         self.dup_size_percent_var = tk.StringVar(value="0")
         self.dup_size_diff_var = tk.StringVar(value="0")
         self.dup_hash_var = tk.BooleanVar(value=True)
-        self.dup_min_size_var = tk.StringVar(value="0")
+        self.dup_min_size_var = tk.StringVar()
+        self.dup_max_size_var = tk.StringVar()
         self.dup_result: DuplicateResult | None = None
         self.dup_kind_vars: dict[str, tk.BooleanVar] = {}
         self.dup_keeper_var = tk.StringVar(value=KEEPER_LABELS[0][0])
@@ -252,49 +263,53 @@ class DuplicatesTabMixin:
         find_box = section(tab, "第 1 步：查找重复或相似文件")
 
         # 与重命名页保持同一套栅格：第 0 列放标签/复选框，第 1 列放控件。
-        checkbox(find_box, "文件名相似", self.dup_name_var).grid(row=0, column=0, sticky="w", pady=3)
+        checkbox(find_box, "文件名相似", self.dup_name_var).grid(row=0, column=0, sticky="w", pady=ROW_PADY)
         name_row = ctk.CTkFrame(find_box, corner_radius=0, fg_color="transparent")
-        name_row.grid(row=0, column=1, sticky="ew", pady=3)
+        name_row.grid(row=0, column=1, sticky="ew", pady=ROW_PADY)
         label(name_row, "相似度").pack(side="left")
         entry(name_row, textvariable=self.dup_name_thresh_var, width=6).pack(side="left", padx=(6, 0))
 
-        checkbox(find_box, "大小接近", self.dup_size_var).grid(row=1, column=0, sticky="w", pady=3)
+        checkbox(find_box, "大小接近", self.dup_size_var).grid(row=1, column=0, sticky="w", pady=ROW_PADY)
         size_row = ctk.CTkFrame(find_box, corner_radius=0, fg_color="transparent")
-        size_row.grid(row=1, column=1, sticky="ew", pady=3)
+        size_row.grid(row=1, column=1, sticky="ew", pady=ROW_PADY)
         label(size_row, "差异").pack(side="left")
         entry(size_row, textvariable=self.dup_size_percent_var, width=4).pack(side="left", padx=(6, 0))
         label(size_row, "% 或").pack(side="left", padx=4)
         entry(size_row, textvariable=self.dup_size_diff_var, width=6).pack(side="left")
         label(size_row, "字节").pack(side="left", padx=4)
 
-        checkbox(find_box, "字节相同（哈希确认，大文件较慢）", self.dup_hash_var).grid(row=2, column=0, columnspan=2, sticky="w", pady=3)
+        checkbox(find_box, "字节相同（哈希确认，大文件较慢）", self.dup_hash_var).grid(row=2, column=0, columnspan=2, sticky="w", pady=ROW_PADY)
 
-        label(find_box, "文件类型").grid(row=3, column=0, sticky="w", pady=3)
-        self.dup_type_picker = MultiSelectDropdown(find_box, quick_video=True)
-        self.dup_type_picker.grid(row=3, column=1, sticky="ew", pady=3)
+        label(find_box, "文件类型").grid(row=3, column=0, sticky="w", pady=ROW_PADY)
+        self.dup_type_picker = MultiSelectDropdown(find_box)
+        self.dup_type_picker.grid(row=3, column=1, sticky="ew", pady=ROW_PADY)
 
-        label(find_box, "最小大小 MB").grid(row=4, column=0, sticky="w", pady=3)
-        entry(find_box, textvariable=self.dup_min_size_var, width=8).grid(row=4, column=1, sticky="w", pady=3)
+        label(find_box, "大小范围 MB").grid(row=4, column=0, sticky="w", pady=ROW_PADY)
+        dup_sizes = ctk.CTkFrame(find_box, corner_radius=0, fg_color="transparent")
+        dup_sizes.grid(row=4, column=1, sticky="ew", pady=ROW_PADY)
+        entry(dup_sizes, textvariable=self.dup_min_size_var, width=7).pack(side="left")
+        label(dup_sizes, " 至 ").pack(side="left")
+        entry(dup_sizes, textvariable=self.dup_max_size_var, width=7).pack(side="left")
 
-        RoundedButton(find_box, text="1. 查找重复/相似文件", variant="primary", command=self._find_duplicates).grid(row=5, column=0, columnspan=2, sticky="ew", pady=(8, 2))
-        hint(find_box, "查找不会修改任何文件；哈希确认只读取文件内容。视频库建议最小大小 ≥ 1 MB。").grid(row=6, column=0, columnspan=2, sticky="w")
-        find_box.columnconfigure(1, weight=1)
+        RoundedButton(find_box, text="1. 查找重复/相似文件", variant="primary", command=self._find_duplicates).grid(row=5, column=0, columnspan=2, sticky="ew", pady=(12, 2))
+        hint(find_box, "查找不会修改任何文件；哈希确认只读取文件内容。大小范围留空表示不限制。").grid(row=6, column=0, columnspan=2, sticky="w", pady=(6, 0))
+        form_grid(find_box)
 
         clean_box = section(tab, "第 2 步：生成清理预览", pady=(10, 0))
         label(clean_box, "参与清理的分组类型").pack(anchor="w")
         kinds_row = ctk.CTkFrame(clean_box, corner_radius=0, fg_color="transparent")
-        kinds_row.pack(fill="x", pady=2)
+        kinds_row.pack(fill="x", pady=(6, 0))
         for kind_label, kind in KIND_LABELS:
             variable = tk.BooleanVar(value=(kind == "hash"))
             self.dup_kind_vars[kind] = variable
-            checkbox(kinds_row, kind_label, variable).pack(side="left", padx=(0, 6))
+            checkbox(kinds_row, kind_label, variable).pack(side="left", padx=(0, 14))
         keeper_row = ctk.CTkFrame(clean_box, corner_radius=0, fg_color="transparent")
-        keeper_row.pack(fill="x", pady=(4, 0))
+        keeper_row.pack(fill="x", pady=(10, 0))
         label(keeper_row, "每组保留").pack(side="left")
         keeper_box = combo(keeper_row, variable=self.dup_keeper_var, values=tuple(label for label, _ in KEEPER_LABELS))
-        keeper_box.pack(side="left", fill="x", expand=True, padx=(6, 0))
+        keeper_box.pack(side="left", fill="x", expand=True, padx=(8, 0))
         keeper_box.bind("<<ComboboxSelected>>", self._on_keeper_changed)
-        RoundedButton(clean_box, text="2. 生成清理预览", variant="primary", command=self._preview_duplicate_cleanup).pack(fill="x", pady=(8, 4))
+        RoundedButton(clean_box, text="2. 生成清理预览", variant="primary", command=self._preview_duplicate_cleanup).pack(fill="x", pady=(12, 2))
         hint(clean_box, "清理会把“保留”以外的文件移动到 工作目录/重复文件/组N/，可在“历史与撤销”中恢复。").pack(anchor="w")
 
     def _duplicate_options(self) -> DuplicateOptions:
@@ -316,12 +331,15 @@ class DuplicatesTabMixin:
 
     def _duplicate_candidates(self) -> list[Path]:
         minimum = self._optional_float(self.dup_min_size_var.get(), "最小文件大小")
+        maximum = self._optional_float(self.dup_max_size_var.get(), "最大文件大小")
+        if minimum is not None and maximum is not None and minimum > maximum:
+            raise ValueError("文件大小范围无效：下限大于上限")
         selected = self.dup_type_picker.selected_values()
         total = len(self.dup_type_picker.options)
         if total and not selected:
             raise ValueError("请至少选择一种文件类型")
         extensions = () if len(selected) == total else selected
-        return self.engine.filter_files(self.files, SearchOptions(extensions=extensions, min_size_mb=minimum))
+        return self.engine.filter_files(self.files, SearchOptions(extensions=extensions, min_size_mb=minimum, max_size_mb=maximum))
 
     def _find_duplicates(self) -> None:
         if not self._ensure_files():

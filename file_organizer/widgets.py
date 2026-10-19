@@ -101,9 +101,9 @@ def section(master, title: str, *, fill: str = "x", expand: bool = False, pady=0
     """带标题的白色圆角卡片；返回内容容器，直接把子控件放进去即可。"""
     card = ctk.CTkFrame(master, corner_radius=12, fg_color=CARD_BG, border_width=1, border_color=BORDER)
     card.pack(fill=fill, expand=expand, pady=pady, padx=padx)
-    ctk.CTkLabel(card, text=title, font=ui_font(12, "bold"), text_color=TEXT_PRIMARY, anchor="w").pack(fill="x", padx=12, pady=(10, 0))
+    ctk.CTkLabel(card, text=title, font=ui_font(12, "bold"), text_color=TEXT_PRIMARY, anchor="w").pack(fill="x", padx=14, pady=(12, 0))
     body = ctk.CTkFrame(card, corner_radius=0, fg_color="transparent")
-    body.pack(fill="both", expand=True, padx=12, pady=(6, 10))
+    body.pack(fill="both", expand=True, padx=14, pady=(8, 12))
     body.card = card
     return body
 
@@ -119,6 +119,16 @@ def _merge(defaults: dict, width, kwargs: dict) -> dict:
 # 所有输入/选择控件共用同一套尺寸，保证各页签观感一致。
 FIELD_HEIGHT = 32
 FIELD_RADIUS = 8
+# 表单里“标签列”的固定宽度：让所有卡片、所有页签的控件左边界对齐。
+LABEL_COLUMN_MIN = 100
+# 表单行的统一行距
+ROW_PADY = 4
+
+
+def form_grid(container) -> None:
+    """给表单容器套用统一栅格：标签列定宽 + 控件列自动拉伸。"""
+    container.columnconfigure(0, minsize=LABEL_COLUMN_MIN)
+    container.columnconfigure(1, weight=1)
 
 
 def entry(master, *, textvariable=None, width=None, **kwargs) -> ctk.CTkEntry:
@@ -143,23 +153,35 @@ class SeamlessComboBox(ctk.CTkComboBox):
     """边框左右连续的只读下拉框。
 
     CustomTkinter 默认把“箭头区”的边框画成 ``button_color``（白底），
-    于是 1px 描边在箭头处断掉，看起来像两个拼起来的控件。这里在每次
-    重绘后把右侧描边/底色改回与左侧一致，保证是一个完整的圆角框。
+    鼠标悬停时又改成悬停色，于是 1px 描边在箭头处断掉，看起来像箭头
+    被丢在框外。这里在每次重绘/悬停后都把右侧描边与底色改回与左侧一致，
+    保证任何状态下都是一个完整的圆角框。
     """
 
     def _draw(self, no_color_updates: bool = False) -> None:
         super()._draw(no_color_updates)
+        self._restore_right_side()
+
+    def _on_enter(self, event=0):
+        super()._on_enter(event)
+        self._restore_right_side()
+
+    def _on_leave(self, event=0):
+        super()._on_leave(event)
+        self._restore_right_side()
+
+    def _restore_right_side(self) -> None:
         if not self._canvas.winfo_exists():
             return
-        self._canvas.itemconfig(
-            "border_parts_right",
-            outline=self._apply_appearance_mode(self._border_color),
-            fill=self._apply_appearance_mode(self._border_color),
-        )
         self._canvas.itemconfig(
             "inner_parts_right",
             outline=self._apply_appearance_mode(self._fg_color),
             fill=self._apply_appearance_mode(self._fg_color),
+        )
+        self._canvas.itemconfig(
+            "border_parts_right",
+            outline=self._apply_appearance_mode(self._border_color),
+            fill=self._apply_appearance_mode(self._border_color),
         )
 
 
@@ -176,7 +198,7 @@ def combo(master, *, variable=None, values=(), width=None, **kwargs) -> ctk.CTkC
             "border_color": FIELD_BORDER,
             "fg_color": CARD_BG,
             "button_color": CARD_BG,
-            "button_hover_color": HOVER_BG,
+            "button_hover_color": CARD_BG,
             "dropdown_fg_color": CARD_BG,
             "dropdown_hover_color": HOVER_BG,
             "dropdown_text_color": TEXT_PRIMARY,
@@ -389,14 +411,13 @@ class RoundedPanel(ctk.CTkFrame):
 class MultiSelectDropdown(ctk.CTkFrame):
     """多选文件类型下拉框：按钮 + 复选列表弹窗。"""
 
-    def __init__(self, master, *, quick_video: bool = False) -> None:
+    def __init__(self, master) -> None:
         super().__init__(master, corner_radius=0, fg_color="transparent")
         self.options: list[tuple[str, str]] = []
         self.selected: set[str] = set()
         self.popup: ctk.CTkToplevel | None = None
         self._rows: list[tuple[tk.BooleanVar, str]] = []
         self._list: ctk.CTkScrollableFrame | None = None
-        self._quick_video = quick_video
         self.button = RoundedButton(
             self,
             text="请先扫描文件  ▾",
@@ -463,16 +484,16 @@ class MultiSelectDropdown(ctk.CTkFrame):
         RoundedButton(actions, text="全选", variant="link", padx=10, pady=5, command=lambda: self._set_all(True)).pack(side="left")
         RoundedButton(actions, text="反选", variant="link", padx=10, pady=5, command=self._invert).pack(side="left", padx=2)
         RoundedButton(actions, text="清空", variant="link", padx=10, pady=5, command=lambda: self._set_all(False)).pack(side="left")
-        if self._quick_video:
-            RoundedButton(actions, text="只选视频", variant="link", padx=10, pady=5, command=lambda: self._select_extensions(TYPE_GROUPS["视频"])).pack(side="left", padx=(10, 0))
 
         group_map = self._available_groups()
         group_var = tk.StringVar(value=next(iter(group_map), ""))
         groups = ctk.CTkFrame(quick, corner_radius=0, fg_color="transparent")
         groups.pack(fill="x", pady=(10, 0))
-        label(groups, "按类别：").pack(side="left")
-        combo(groups, variable=group_var, values=tuple(group_map)).pack(side="left", fill="x", expand=True, padx=(6, 0))
-        RoundedButton(groups, text="选择类别", variant="primary", padx=12, pady=6, command=lambda: self._select_group(group_map.get(group_var.get(), ()))).pack(side="left", padx=(8, 0))
+        label(groups, "按类别").pack(side="left")
+        category_box = combo(groups, variable=group_var, values=tuple(group_map))
+        category_box.pack(side="left", fill="x", expand=True, padx=(8, 0))
+        # 选中类别即直接勾选该类别的类型，无需再点按钮确认。
+        category_box.bind("<<ComboboxSelected>>", lambda _event: self._select_group(group_map.get(group_var.get(), ())))
 
         list_frame = ctk.CTkFrame(popup, corner_radius=0, fg_color="transparent")
         list_frame.pack(fill="both", expand=True, padx=14, pady=(10, 0))
@@ -517,12 +538,6 @@ class MultiSelectDropdown(ctk.CTkFrame):
         wanted = set(indices)
         for position, (variable, _) in enumerate(self._rows):
             variable.set(position in wanted)
-
-    def _select_extensions(self, extensions) -> None:
-        """按扩展名快捷勾选（例如“只选视频”）。"""
-        wanted = set(extensions)
-        for variable, value in self._rows:
-            variable.set(value in wanted)
 
     def _apply(self) -> None:
         self.selected = {value for variable, value in self._rows if variable.get()}

@@ -80,7 +80,7 @@ class FileOrganizerApp(RenameTabMixin, OrganizeTabMixin, DuplicatesTabMixin, His
 
         label(root, "先筛选和预览，再安全地批量重命名、分类或清理重复文件。", color=TEXT_SECONDARY).pack(anchor="w", pady=(0, 12))
 
-        chooser_panel = RoundedPanel(root, padding=(12, 10))
+        chooser_panel = RoundedPanel(root, padding=(14, 12))
         chooser_panel.pack(fill="x")
         chooser = chooser_panel.inner
         label(chooser, "工作目录").pack(side="left", padx=(0, 10))
@@ -96,12 +96,12 @@ class FileOrganizerApp(RenameTabMixin, OrganizeTabMixin, DuplicatesTabMixin, His
 
         left_wrap = ctk.CTkFrame(body, corner_radius=0, fg_color=APP_BG)
         body.add(left_wrap, weight=2)
-        left_panel = RoundedPanel(left_wrap, padding=(2, 2))
+        left_panel = RoundedPanel(left_wrap, padding=(10, 10), fill=APP_BG, border=None)
         left_panel.pack(fill="both", expand=True, padx=(0, 3))
         self.left_scroll = ctk.CTkScrollableFrame(
             left_panel.inner,
             corner_radius=0,
-            fg_color=CARD_BG,
+            fg_color=APP_BG,
             width=380,
             scrollbar_button_color=SCROLL_THUMB,
             scrollbar_button_hover_color=SCROLL_THUMB_ACTIVE,
@@ -117,7 +117,7 @@ class FileOrganizerApp(RenameTabMixin, OrganizeTabMixin, DuplicatesTabMixin, His
 
         preview_wrap = ctk.CTkFrame(body, corner_radius=0, fg_color=APP_BG)
         body.add(preview_wrap, weight=3)
-        preview_panel = RoundedPanel(preview_wrap, padding=(12, 10))
+        preview_panel = RoundedPanel(preview_wrap, padding=(14, 12))
         preview_panel.pack(fill="both", expand=True, padx=(3, 0))
         preview = preview_panel.inner
         label(preview, "文件与操作预览", size=13, weight="bold").grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 8))
@@ -133,7 +133,7 @@ class FileOrganizerApp(RenameTabMixin, OrganizeTabMixin, DuplicatesTabMixin, His
         self.tree.tag_configure("keep", foreground="#248A3D")
         self.tree.tag_configure("candidate", foreground="#B25000")
         headings = {"status": "状态", "source": "原文件", "destination": "目标位置", "size": "大小"}
-        widths = {"status": 62, "source": 260, "destination": 300, "size": 88}
+        widths = {"status": 62, "source": 250, "destination": 265, "size": 88}
         for col in columns:
             self.tree.heading(col, text=headings[col])
             self.tree.column(col, width=widths[col], anchor="w")
@@ -146,7 +146,7 @@ class FileOrganizerApp(RenameTabMixin, OrganizeTabMixin, DuplicatesTabMixin, His
         preview.rowconfigure(1, weight=1)
         preview.columnconfigure(0, weight=1)
 
-        bottom_panel = RoundedPanel(root, padding=(14, 10))
+        bottom_panel = RoundedPanel(root, padding=(14, 12))
         bottom_panel.pack(fill="x")
         bottom = bottom_panel.inner
         label(bottom, "●", color=ACCENT).pack(side="left", padx=(0, 7))
