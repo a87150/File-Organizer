@@ -37,7 +37,7 @@ KEEPER_VALUES = dict(KEEPER_LABELS)
 
 class RenameTabMixin:
     def _build_rename_tab(self, notebook: TabHost) -> None:
-        tab = ctk.CTkFrame(notebook, corner_radius=0, fg_color="transparent")
+        tab = notebook.make_page()
         notebook.add(tab, text="重命名")
         search_box = section(tab, "第 1 步：搜索要重命名的文件")
         self.search_name_var = tk.StringVar()
@@ -150,7 +150,7 @@ class RenameTabMixin:
 
 class OrganizeTabMixin:
     def _build_organize_tab(self, notebook: TabHost) -> None:
-        tab = ctk.CTkFrame(notebook, corner_radius=0, fg_color="transparent")
+        tab = notebook.make_page()
         notebook.add(tab, text="分类整理")
         self.mode_var = tk.StringVar(value="type")
         self.other_var = tk.BooleanVar(value=True)
@@ -200,7 +200,7 @@ class OrganizeTabMixin:
 
 class HistoryTabMixin:
     def _build_history_tab(self, notebook: TabHost) -> None:
-        tab = ctk.CTkFrame(notebook, corner_radius=0, fg_color="transparent")
+        tab = notebook.make_page()
         notebook.add(tab, text="历史")
         undo_box = section(tab, "历史与撤销")
         hint(undo_box, "每次成功操作都会生成 JSON 日志，可选择日志撤销对应操作。").pack(anchor="w", pady=(0, 10))
@@ -244,7 +244,7 @@ class HistoryTabMixin:
 
 class DuplicatesTabMixin:
     def _build_duplicates_tab(self, notebook: TabHost) -> None:
-        tab = ctk.CTkFrame(notebook, corner_radius=0, fg_color="transparent")
+        tab = notebook.make_page()
         notebook.add(tab, text="查重")
 
         self.dup_name_var = tk.BooleanVar(value=True)

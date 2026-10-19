@@ -19,6 +19,7 @@ from .core import (
     OrganizerEngine,
 )
 from .duplicates import OperationCancelled
+from .regex_help import RegexHelpWindow
 from .tabs import DuplicatesTabMixin, HistoryTabMixin, OrganizeTabMixin, RenameTabMixin
 from .theme import (
     ACCENT,
@@ -78,7 +79,10 @@ class FileOrganizerApp(RenameTabMixin, OrganizeTabMixin, DuplicatesTabMixin, His
         root = ctk.CTkFrame(self, corner_radius=0, fg_color=APP_BG)
         root.pack(fill="both", expand=True, padx=18, pady=18)
 
-        label(root, "先筛选和预览，再安全地批量重命名、分类或清理重复文件。", color=TEXT_SECONDARY).pack(anchor="w", pady=(0, 12))
+        intro = ctk.CTkFrame(root, corner_radius=0, fg_color="transparent")
+        intro.pack(fill="x", pady=(0, 12))
+        label(intro, "先筛选和预览，再安全地批量重命名、分类或清理重复文件。", color=TEXT_SECONDARY).pack(side="left")
+        RoundedButton(intro, text="正则", variant="secondary", padx=14, pady=6, height=FIELD_HEIGHT, command=self._show_regex_help).pack(side="right")
 
         chooser_panel = RoundedPanel(root, padding=(14, 12))
         chooser_panel.pack(fill="x")
@@ -98,17 +102,8 @@ class FileOrganizerApp(RenameTabMixin, OrganizeTabMixin, DuplicatesTabMixin, His
         body.add(left_wrap, weight=2)
         left_panel = RoundedPanel(left_wrap, padding=(10, 10), fill=APP_BG, border=None)
         left_panel.pack(fill="both", expand=True, padx=(0, 3))
-        self.left_scroll = ctk.CTkScrollableFrame(
-            left_panel.inner,
-            corner_radius=0,
-            fg_color=APP_BG,
-            width=380,
-            scrollbar_button_color=SCROLL_THUMB,
-            scrollbar_button_hover_color=SCROLL_THUMB_ACTIVE,
-        )
-        self.left_scroll.pack(fill="both", expand=True)
 
-        self.tab_host = TabHost(self.left_scroll)
+        self.tab_host = TabHost(left_panel.inner, surface=APP_BG, width=380)
         self.tab_host.pack(fill="both", expand=True)
         self._build_rename_tab(self.tab_host)
         self._build_organize_tab(self.tab_host)
@@ -181,6 +176,16 @@ class FileOrganizerApp(RenameTabMixin, OrganizeTabMixin, DuplicatesTabMixin, His
             pass
 
     # ------------------------------------------------------------------ 选择目录
+
+    def _show_regex_help(self) -> None:
+        """右上角「正则」按钮：打开正则基础教学 / 常用模板。"""
+        existing = getattr(self, "_regex_window", None)
+        if existing is not None and existing.winfo_exists():
+            existing.deiconify()
+            existing.lift()
+            existing.focus_force()
+            return
+        self._regex_window = RegexHelpWindow(self)
 
     def _choose_folder(self) -> None:
         selected = filedialog.askdirectory(initialdir=self.folder_var.get())

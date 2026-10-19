@@ -17,6 +17,7 @@ from .core import TYPE_GROUPS
 from .theme import (
     ACCENT,
     ACCENT_HOVER,
+    APP_BG,
     BORDER,
     CARD_BG,
     CHECK_BORDER,
@@ -85,11 +86,11 @@ def RoundedButton(
 
 # --------------------------------------------------------------------- 表单控件
 
-def label(master, text: str = "", *, size: int = 12, weight: str = "normal", color: str = TEXT_PRIMARY, **kwargs) -> ctk.CTkLabel:
+def label(master, text: str = "", *, size: int = 12, weight: str = "normal", color: str = TEXT_PRIMARY, font=None, **kwargs) -> ctk.CTkLabel:
     """普通文本标签（统一字体与颜色）。"""
     kwargs.setdefault("anchor", "w")
     kwargs.setdefault("justify", "left")
-    return ctk.CTkLabel(master, text=text, font=ui_font(size, weight), text_color=color, **kwargs)
+    return ctk.CTkLabel(master, text=text, font=font or ui_font(size, weight), text_color=color, **kwargs)
 
 
 def hint(master, text: str, *, wraplength: int = 280, **kwargs) -> ctk.CTkLabel:
@@ -371,12 +372,24 @@ class SegmentedControl(ctk.CTkSegmentedButton):
 
 
 class TabHost(ctk.CTkFrame):
-    """带分段控制器的页签容器，接口与 Notebook.add 保持兼容。"""
+    """带分段控制器的页签容器，接口与 Notebook.add 保持兼容。
 
-    def __init__(self, master, *, surface: str = CARD_BG) -> None:
+    页签按钮固定在顶部不参与滚动，只有下方的内容区滚动。
+    """
+
+    def __init__(self, master, *, surface: str = APP_BG, width: int = 380) -> None:
         super().__init__(master, corner_radius=0, fg_color="transparent")
         self.selector = SegmentedControl(self, command=self._on_select, bg=surface)
-        self.selector.pack(anchor="w", pady=(0, 14))
+        self.selector.pack(anchor="w", pady=(0, 12))
+        self.content = ctk.CTkScrollableFrame(
+            self,
+            corner_radius=0,
+            fg_color=surface,
+            width=width,
+            scrollbar_button_color=SCROLL_THUMB,
+            scrollbar_button_hover_color=SCROLL_THUMB_ACTIVE,
+        )
+        self.content.pack(fill="both", expand=True)
         self.frames: list[tk.Widget] = []
         self.titles: list[str] = []
         self.index = -1
@@ -386,6 +399,10 @@ class TabHost(ctk.CTkFrame):
         self.titles.append(text or f"页签 {len(self.frames)}")
         self.selector.set_options(self.titles)
         self._show(self.index if self.index >= 0 else 0)
+
+    def make_page(self) -> ctk.CTkFrame:
+        """创建页签内容容器（父级是滚动区，因此只有正文滚动）。"""
+        return ctk.CTkFrame(self.content, corner_radius=0, fg_color="transparent")
 
     def _on_select(self, index: int) -> None:
         self._show(index)
