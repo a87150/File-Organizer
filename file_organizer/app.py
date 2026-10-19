@@ -82,7 +82,7 @@ class FileOrganizerApp(RenameTabMixin, OrganizeTabMixin, DuplicatesTabMixin, His
         intro = ctk.CTkFrame(root, corner_radius=0, fg_color="transparent")
         intro.pack(fill="x", pady=(0, 12))
         label(intro, "先筛选和预览，再安全地批量重命名、分类或清理重复文件。", color=TEXT_SECONDARY).pack(side="left")
-        RoundedButton(intro, text="正则", variant="secondary", padx=14, pady=6, height=FIELD_HEIGHT, command=self._show_regex_help).pack(side="right")
+        RoundedButton(intro, text="正则帮助", variant="secondary", padx=14, pady=6, height=FIELD_HEIGHT, command=self._show_regex_help).pack(side="right")
 
         chooser_panel = RoundedPanel(root, padding=(14, 12))
         chooser_panel.pack(fill="x")
