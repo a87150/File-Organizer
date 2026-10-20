@@ -6,9 +6,10 @@ import re
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Sequence
+from typing import Callable, Sequence
 
-from .core import TYPE_GROUPS
+from .core import TYPE_GROUPS, Action, ActionStatus
+from .utils import format_size
 
 # (字段名, 表头, 默认宽度, 对齐方式)
 PREVIEW_COLUMNS: tuple[tuple[str, str, int, str], ...] = (
@@ -94,6 +95,55 @@ class PreviewRow:
         return str(getattr(self, key, ""))
 
 
+def build_action_row(
+    action: Action,
+    scan_root: Path | None,
+    relative: Callable[[Path], str],
+    folder_text: Callable[[Path], str],
+) -> PreviewRow:
+    """把一条 Action 转成预览行；目标/源文件只 stat 一次。"""
+    target = action.destination
+    try:
+        info = target.stat()
+    except OSError:
+        target = action.source
+        try:
+            info = target.stat()
+        except OSError:
+            info = None
+
+    if scan_root is not None:
+        try:
+            destination = str(action.destination.relative_to(scan_root))
+        except ValueError:
+            destination = str(action.destination)
+    else:
+        destination = str(action.destination)
+
+    status = str(action.status)
+    if action.status == ActionStatus.FAILED:
+        tag = "failed"
+    elif action.status in {ActionStatus.SUCCESS, ActionStatus.UNDONE}:
+        tag = "success"
+    else:
+        tag = "pending"
+    size = info.st_size if info is not None else None
+    modified_ts = info.st_mtime if info is not None else 0.0
+    return PreviewRow(
+        status=status,
+        source=relative(action.source),
+        destination=destination,
+        file_type=file_type_label(target),
+        size_text=format_size(size) if size is not None else "—",
+        modified=format_modified(modified_ts if info is not None else None),
+        folder=folder_text(action.source),
+        size_value=size if size is not None else -1,
+        modified_ts=modified_ts,
+        tags=(tag,),
+    )
+
+
+
 def natural_key(text: str) -> tuple:
     """文件名里的数字按数值比较：file2 排在 file10 前面。"""
     return tuple((0, int(part)) if part.isdigit() else (1, part.casefold()) for part in _DIGITS.split(text))
@@ -101,7 +151,8 @@ def natural_key(text: str) -> tuple:
 
 def _sort_key(row: PreviewRow, column: str):
     if column == "status":
-        return STATUS_ORDER.get(row.status, 99), row.status
+        status = str(row.status)
+        return STATUS_ORDER.get(status, 99), status
     if column == "size":
         return row.size_value
     if column == "modified":

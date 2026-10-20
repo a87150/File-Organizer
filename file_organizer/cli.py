@@ -6,8 +6,8 @@ import sys
 from pathlib import Path
 
 from .core import TYPE_GROUPS, OrganizerEngine, SearchOptions
-from .duplicates import DuplicateGroup, DuplicateOptions, find_duplicates
-from .utils import format_size
+from .duplicates import DuplicateGroup, DuplicateOptions
+from .utils import format_size, normalize_extension
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -26,13 +26,14 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--size-diff", type=int, default=0, help="允许大小差异字节数，默认 0")
     parser.add_argument("--no-size", action="store_true", help="跳过按大小找候选")
     parser.add_argument("--hash", action="store_true", help="对同大小候选计算哈希，确认是否字节完全相同")
+    parser.add_argument("--workers", type=int, default=4, help="哈希阶段并行读盘线程数，默认 4")
     parser.add_argument("--skip-hidden", action="store_true", help="跳过隐藏文件和目录")
     parser.add_argument("--json", metavar="FILE", help="把结果写入 JSON 文件")
     return parser
 
 
 def _normalize_extensions(values: list[str]) -> set[str]:
-    return {value.lower() if value.startswith(".") else f".{value.lower()}" for value in values}
+    return {normalize_extension(value) for value in values}
 
 
 def _rel(path: Path, root: Path) -> str:
@@ -62,7 +63,16 @@ def _to_relatives(groups: list[DuplicateGroup], root: Path) -> list[list[str]]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = _build_parser().parse_args(argv)
+    parser = _build_parser()
+    args = parser.parse_args(argv)
+    if not 0 < args.name_thresh <= 1:
+        parser.error("--name-thresh 相似度阈值应在 0 到 1 之间")
+    if args.size_percent < 0:
+        parser.error("--size-percent 大小差异百分比不能为负数")
+    if args.size_diff < 0:
+        parser.error("--size-diff 大小差异字节数不能为负数")
+    if not 1 <= args.workers <= 32:
+        parser.error("--workers 读盘线程应在 1 到 32 之间")
 
     root = Path(args.root).expanduser()
     try:
@@ -106,6 +116,7 @@ def main(argv: list[str] | None = None) -> int:
         size_tolerance_percent=args.size_percent,
         size_tolerance_bytes=args.size_diff,
         hash_enabled=args.hash,
+        workers=args.workers,
     )
 
     last_stage = ""
@@ -116,7 +127,7 @@ def main(argv: list[str] | None = None) -> int:
             last_stage = label
             print(f"{label} ...", file=sys.stderr)
 
-    result = find_duplicates(files, options, progress=report_progress)
+    result = engine.find_duplicates(files, options, progress=report_progress)
 
     name_groups = [group for group in result.groups if group.kind == "name"]
     size_groups = [group for group in result.groups if group.kind == "size"]

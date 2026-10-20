@@ -30,6 +30,7 @@ from .theme import (
     SEGMENT_HOVER,
     TEXT_PRIMARY,
     TEXT_SECONDARY,
+    apply_window_frame,
 )
 from .theme import font as ui_font
 
@@ -172,18 +173,24 @@ class SeamlessComboBox(ctk.CTkComboBox):
         self._restore_right_side()
 
     def _restore_right_side(self) -> None:
-        if not self._canvas.winfo_exists():
+        # 依赖 CTk 内部结构（_canvas / inner_parts_right），升级 CTk 需人工回归；
+        # 内部属性缺失时静默降级，避免整个下拉框无法使用。
+        try:
+            canvas = self._canvas
+            if not canvas.winfo_exists():
+                return
+            canvas.itemconfig(
+                "inner_parts_right",
+                outline=self._apply_appearance_mode(self._fg_color),
+                fill=self._apply_appearance_mode(self._fg_color),
+            )
+            canvas.itemconfig(
+                "border_parts_right",
+                outline=self._apply_appearance_mode(self._border_color),
+                fill=self._apply_appearance_mode(self._border_color),
+            )
+        except AttributeError:
             return
-        self._canvas.itemconfig(
-            "inner_parts_right",
-            outline=self._apply_appearance_mode(self._fg_color),
-            fill=self._apply_appearance_mode(self._fg_color),
-        )
-        self._canvas.itemconfig(
-            "border_parts_right",
-            outline=self._apply_appearance_mode(self._border_color),
-            fill=self._apply_appearance_mode(self._border_color),
-        )
 
 
 def combo(master, *, variable=None, values=(), width=None, **kwargs) -> ctk.CTkComboBox:
@@ -219,11 +226,16 @@ def bind_combo_toggle(widget: ctk.CTkComboBox) -> None:
     """让下拉框整块可点击：单击文字区域同样展开/收起列表。"""
 
     def toggle(_event=None):
-        menu = widget._dropdown_menu
-        if menu.is_open():
-            menu.close()
-        elif widget.cget("state") != "disabled":
-            widget._open_dropdown_menu()
+        # 依赖 CTk 内部结构（_dropdown_menu / _open_dropdown_menu），升级需人工回归；
+        # 属性缺失时保持默认的箭头点击行为，不要抛异常。
+        try:
+            menu = widget._dropdown_menu
+            if menu.is_open():
+                menu.close()
+            elif widget.cget("state") != "disabled":
+                widget._open_dropdown_menu()
+        except AttributeError:
+            return
 
     widget.bind("<Button-1>", toggle)
 
@@ -486,6 +498,7 @@ class MultiSelectDropdown(ctk.CTkFrame):
         x = min(x, max(0, popup.winfo_screenwidth() - width - 20))
         popup.geometry(f"{width}x420+{x}+{y}")
         popup.protocol("WM_DELETE_WINDOW", self._close_popup)
+        popup.after(80, lambda: apply_window_frame(popup))
 
         label(popup, "选择一个或多个文件类型", size=13, weight="bold").pack(fill="x", padx=14, pady=(12, 0))
 

@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+import sys
+import tkinter as tk
 from tkinter import ttk
 
 import customtkinter as ctk
@@ -32,6 +34,37 @@ CHECK_BORDER = "#C7C7CC"
 
 # 全局字号偏移：整体比默认大一档，观感更舒展。
 FONT_SIZE_OFFSET = 1
+
+
+def _colorref(hex_color: str) -> int:
+    """把 #RRGGBB 转成 Windows COLORREF（0x00BBGGRR）。"""
+    value = int(hex_color.lstrip("#"), 16)
+    red, green, blue = (value >> 16) & 0xFF, (value >> 8) & 0xFF, value & 0xFF
+    return (blue << 16) | (green << 8) | red
+
+
+def apply_window_frame(window: tk.Misc) -> None:
+    """让 Windows 系统标题栏与窗口主体同色。
+
+    主窗口与小窗口（正则帮助、显示字段、类型选择）都调用这里；Windows 11 支持
+    DWMWA_CAPTION_COLOR 等属性，其他系统或调用失败时静默忽略。
+    """
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+
+        hwnd = ctypes.windll.user32.GetParent(window.winfo_id())
+        if not hwnd:
+            return
+        for attribute, color in ((35, APP_BG), (36, TEXT_PRIMARY), (34, BORDER)):
+            data = ctypes.c_int(_colorref(color))
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                hwnd, attribute, ctypes.byref(data), ctypes.sizeof(data)
+            )
+    except (OSError, AttributeError, TypeError, tk.TclError):
+        pass
+
 
 _fonts: dict[tuple[int, str], ctk.CTkFont] = {}
 

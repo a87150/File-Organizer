@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 
 
 def report_missing_gui_dependency(exc: ModuleNotFoundError) -> bool:
@@ -16,10 +17,28 @@ def report_missing_gui_dependency(exc: ModuleNotFoundError) -> bool:
 
 
 def format_size(size: float) -> str:
-    """把字节数格式化为便于阅读的字符串，例如 1.5 MB。"""
+    """把字节数格式化为便于阅读的字符串，例如 1.5 MB、512 B。"""
     value = float(size)
     for unit in ("B", "KB", "MB", "GB", "TB"):
         if value < 1024 or unit == "TB":
+            if unit == "B":
+                return f"{int(value)} B"
             return f"{value:.1f} {unit}"
         value /= 1024
     return f"{value:.1f} TB"
+
+
+def normalize_extension(value: str) -> str:
+    """统一扩展名：去空格、转小写、补前导点；空字符串表示“无扩展名”。"""
+    cleaned = value.strip()
+    if not cleaned:
+        return ""
+    return cleaned.casefold() if cleaned.startswith(".") else f".{cleaned.casefold()}"
+
+
+def resource_path(relative: str) -> Path:
+    """定位源码或 PyInstaller 打包后的资源文件。"""
+    base = getattr(sys, "_MEIPASS", None)
+    if base:
+        return Path(base) / relative
+    return Path(__file__).resolve().parent.parent / relative

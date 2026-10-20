@@ -1,12 +1,16 @@
 """File Organizer desktop application."""
 
+__version__ = "1.2.5"
+
 from .core import (
     STATUS_FAILED,
     STATUS_PENDING,
     STATUS_SUCCESS,
     STATUS_UNDONE,
     Action,
+    ActionStatus,
     CleanupOptions,
+    FileEntry,
     OrganizerEngine,
     OrganizeOptions,
     RenameOptions,
@@ -16,10 +20,12 @@ from .duplicates import DuplicateGroup, DuplicateOptions, DuplicateResult, find_
 
 __all__ = [
     "Action",
+    "ActionStatus",
     "CleanupOptions",
     "DuplicateGroup",
     "DuplicateOptions",
     "DuplicateResult",
+    "FileEntry",
     "OrganizerEngine",
     "OrganizeOptions",
     "RenameOptions",
@@ -28,5 +34,6 @@ __all__ = [
     "STATUS_PENDING",
     "STATUS_SUCCESS",
     "STATUS_UNDONE",
+    "__version__",
     "find_duplicates",
 ]

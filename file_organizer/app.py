@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import queue
-import sys
 import threading
 import tkinter as tk
 from collections import Counter
@@ -12,14 +11,19 @@ from tkinter import filedialog, messagebox, ttk
 import customtkinter as ctk
 
 from .core import (
-    STATUS_FAILED,
+    LOG_DIRECTORY_NAME,
     STATUS_SUCCESS,
-    STATUS_UNDONE,
     Action,
+    FileEntry,
     OrganizerEngine,
 )
 from .duplicates import OperationCancelled
-from .preferences import load_visible_columns, save_visible_columns
+from .preferences import (
+    load_preview_sort,
+    load_visible_columns,
+    save_preview_sort,
+    save_visible_columns,
+)
 from .preview import (
     COLUMN_ANCHORS,
     COLUMN_KEYS,
@@ -28,6 +32,7 @@ from .preview import (
     DEFAULT_VISIBLE,
     FIXED_COLUMNS,
     PreviewRow,
+    build_action_row,
     file_type_label,
     format_modified,
     sort_preview_rows,
@@ -39,13 +44,12 @@ from .theme import (
     APP_BG,
     CARD_BG,
     FONT_FAMILY,
-    SCROLL_THUMB,
-    SCROLL_THUMB_ACTIVE,
     SEGMENT_BG,
     TEXT_SECONDARY,
+    apply_window_frame,
     configure_styles,
 )
-from .utils import format_size
+from .utils import format_size, resource_path
 from .widgets import (  # noqa: F401  (部分供各页签构建时使用)
     FIELD_HEIGHT,
     RoundedButton,
@@ -65,10 +69,12 @@ class FileOrganizerApp(RenameTabMixin, OrganizeTabMixin, DuplicatesTabMixin, His
     def __init__(self) -> None:
         super().__init__(fg_color=APP_BG)
         self.title("文件夹整理工具")
+        self._set_window_icon()
         self.geometry("1180x760")
         self.minsize(900, 600)
         self.engine = OrganizerEngine()
         self.files: list[Path] = []
+        self.file_entries: list[FileEntry] = []
         self.matched_files: list[Path] | None = None
         self.actions: list[Action] = []
         self.last_log: Path | None = None
@@ -78,8 +84,7 @@ class FileOrganizerApp(RenameTabMixin, OrganizeTabMixin, DuplicatesTabMixin, His
         self.cancel_event: threading.Event | None = None
         self._tree_generation = 0
         self._preview_rows: list[PreviewRow] = []
-        self._sort_column: str | None = None
-        self._sort_desc = False
+        self._sort_column, self._sort_desc = load_preview_sort()
         self._visible_columns = load_visible_columns()
         self._column_popup: ctk.CTkToplevel | None = None
         self._column_vars: dict[str, tk.BooleanVar] = {}
@@ -163,6 +168,11 @@ class FileOrganizerApp(RenameTabMixin, OrganizeTabMixin, DuplicatesTabMixin, His
             self.tree.heading(col, text=COLUMN_TITLES[col], command=lambda key=col: self._sort_preview(key))
             self.tree.column(col, width=COLUMN_WIDTHS[col], anchor=COLUMN_ANCHORS[col])
         self.tree.configure(displaycolumns=self._display_columns())
+        if self._sort_column is not None and self._sort_column not in self._display_columns():
+            # 设置文件里可能残留了已隐藏列的排序；启动时统一归零。
+            self._sort_column = None
+            self._sort_desc = False
+        self._refresh_headings()
         ybar = scrollbar(preview, orientation="vertical", command=self.tree.yview)
         xbar = scrollbar(preview, orientation="horizontal", command=self.tree.xview, height=12)
         self.tree.configure(yscrollcommand=ybar.set, xscrollcommand=xbar.set)
@@ -185,26 +195,18 @@ class FileOrganizerApp(RenameTabMixin, OrganizeTabMixin, DuplicatesTabMixin, His
         self.cancel_button = RoundedButton(right_bar, text="取消", variant="secondary", padx=16, pady=8, command=self._cancel_current)
         self._reset_progress()
 
-    def _apply_window_frame(self) -> None:
-        """让系统标题栏与窗口主体同色（Windows 11 支持；其他系统静默忽略）。"""
-        if sys.platform != "win32":
-            return
+    def _set_window_icon(self) -> None:
+        """设置窗口图标；资源缺失或平台不支持时静默忽略。"""
         try:
-            import ctypes
-
-            def colorref(hex_color: str) -> int:
-                value = int(hex_color.lstrip("#"), 16)
-                red, green, blue = (value >> 16) & 0xFF, (value >> 8) & 0xFF, value & 0xFF
-                return (blue << 16) | (green << 8) | red
-
-            hwnd = ctypes.windll.user32.GetParent(self.winfo_id())
-            if not hwnd:
-                return
-            for attribute, color in ((35, APP_BG), (36, TEXT_PRIMARY), (34, BORDER)):
-                data = ctypes.c_int(colorref(color))
-                ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, attribute, ctypes.byref(data), ctypes.sizeof(data))
-        except Exception:
+            icon = resource_path("file_organizer/assets/app.ico")
+            if icon.exists():
+                self.iconbitmap(str(icon))
+        except (OSError, tk.TclError):
             pass
+
+    def _apply_window_frame(self) -> None:
+        """让系统标题栏与窗口主体同色；具体实现见 theme.apply_window_frame。"""
+        apply_window_frame(self)
 
     # ------------------------------------------------------------------ 选择目录
 
@@ -223,6 +225,7 @@ class FileOrganizerApp(RenameTabMixin, OrganizeTabMixin, DuplicatesTabMixin, His
         if selected:
             self.folder_var.set(selected)
             self.files = []
+            self.file_entries = []
             self.matched_files = None
             self.actions = []
             self.last_log = None
@@ -232,7 +235,7 @@ class FileOrganizerApp(RenameTabMixin, OrganizeTabMixin, DuplicatesTabMixin, His
 
     # ------------------------------------------------------------------ 后台任务
 
-    def _run_background(self, label: str, function, *, cancellable: bool = False) -> None:
+    def _run_background(self, label_text: str, function, *, cancellable: bool = False) -> None:
         if self.busy:
             self.status_var.set("正在执行上一个任务，请稍候…")
             return
@@ -245,7 +248,7 @@ class FileOrganizerApp(RenameTabMixin, OrganizeTabMixin, DuplicatesTabMixin, His
             self.cancel_button.pack(side="left", padx=(0, 10), before=self.execute_btn)
         else:
             self.cancel_button.pack_forget()
-        self.status_var.set(label)
+        self.status_var.set(label_text)
         self._reset_progress(start=True)
         threading.Thread(target=self._worker, args=(function,), daemon=True).start()
 
@@ -323,10 +326,11 @@ class FileOrganizerApp(RenameTabMixin, OrganizeTabMixin, DuplicatesTabMixin, His
         self._run_background("正在扫描…", lambda: (self._show_scan, (folder, self.engine.scan(folder, recursive, include_hidden))))
 
     def _show_scan(self, payload) -> None:
-        folder, files = payload
+        folder, entries = payload
         root = folder.resolve()
         self.scan_root = root
-        self.files = files
+        self.file_entries = entries
+        self.files = [entry.path for entry in entries]
         self.matched_files = None
         self.actions = []
         self.dup_result = None
@@ -334,8 +338,9 @@ class FileOrganizerApp(RenameTabMixin, OrganizeTabMixin, DuplicatesTabMixin, His
         rows = []
         total = 0
         counts: Counter[str] = Counter()
-        for path in files:
-            size, modified_ts = self._stat_values(path)
+        for file_entry in entries:
+            path = file_entry.path
+            size, modified_ts = file_entry.size, file_entry.mtime
             if size is not None:
                 total += size
             counts[path.suffix.casefold()] += 1
@@ -359,41 +364,17 @@ class FileOrganizerApp(RenameTabMixin, OrganizeTabMixin, DuplicatesTabMixin, His
             type_options.append((f"{name} ({count})", extension))
         self.search_type_picker.set_options(type_options)
         self.dup_type_picker.set_options(type_options)
-        note = self._truncation_note(len(files))
-        self.status_var.set(f"已扫描 {len(files)} 个文件，共 {format_size(total)}{note}")
+        note = self._truncation_note(len(entries))
+        self.status_var.set(f"已扫描 {len(entries)} 个文件，共 {format_size(total)}{note}")
 
     # ------------------------------------------------------------------ 预览与执行
 
     def _show_actions(self, actions: list[Action]) -> None:
         self.actions = actions
-        rows = []
-        for action in actions:
-            try:
-                destination = str(action.destination.relative_to(self.scan_root)) if self.scan_root else str(action.destination)
-            except ValueError:
-                destination = str(action.destination)
-            target = action.destination if action.destination.exists() else action.source
-            size, modified_ts = self._stat_values(target)
-            if action.status == STATUS_FAILED:
-                tag = "failed"
-            elif action.status in {STATUS_SUCCESS, STATUS_UNDONE}:
-                tag = "success"
-            else:
-                tag = "pending"
-            rows.append(
-                PreviewRow(
-                    status=action.status,
-                    source=self._relative(action.source),
-                    destination=destination,
-                    file_type=file_type_label(target),
-                    size_text=format_size(size) if size is not None else "—",
-                    modified=format_modified(modified_ts),
-                    folder=self._folder_text(action.source),
-                    size_value=size if size is not None else -1,
-                    modified_ts=modified_ts or 0.0,
-                    tags=(tag,),
-                )
-            )
+        rows = [
+            build_action_row(action, self.scan_root, self._relative, self._folder_text)
+            for action in actions
+        ]
         self._populate_tree(rows)
         self.execute_btn.configure(state="normal" if actions else "disabled")
         self.status_var.set(f"预览包含 {len(actions)} 项操作；请确认后执行")
@@ -404,7 +385,7 @@ class FileOrganizerApp(RenameTabMixin, OrganizeTabMixin, DuplicatesTabMixin, His
         if not messagebox.askyesno("确认执行", f"即将执行 {len(self.actions)} 项操作。是否继续？"):
             return
         actions = list(self.actions)
-        log_dir = self._current_root() / ".file_organizer_logs"
+        log_dir = self._current_root() / LOG_DIRECTORY_NAME
         self._run_background("正在执行…", lambda: (self._show_results, self.engine.execute(actions, log_dir)))
 
     def _show_results(self, result) -> None:
@@ -416,9 +397,8 @@ class FileOrganizerApp(RenameTabMixin, OrganizeTabMixin, DuplicatesTabMixin, His
         self.execute_btn.configure(state="disabled")
         succeeded = sum(item.status == STATUS_SUCCESS for item in actions)
         failed = len(actions) - succeeded
-        self.status_var.set(f"执行完成：成功 {succeeded}，失败 {failed}")
+        self.status_var.set(f"执行完成：成功 {succeeded}，失败 {failed}；点击「扫描文件」可刷新列表")
         messagebox.showinfo("完成", f"成功：{succeeded}\n失败：{failed}\n日志：{log_path or '无'}")
-        self._scan()
 
     # ------------------------------------------------------------------ 树与通用工具
 
@@ -470,6 +450,7 @@ class FileOrganizerApp(RenameTabMixin, OrganizeTabMixin, DuplicatesTabMixin, His
         else:
             self._sort_column = column
             self._sort_desc = False
+        save_preview_sort(self._sort_column, self._sort_desc)
         self._refresh_headings()
         self._render_preview()
 
@@ -540,6 +521,7 @@ class FileOrganizerApp(RenameTabMixin, OrganizeTabMixin, DuplicatesTabMixin, His
             f"{width}x{height}+{max(12, min(x, screen_w - width - 12))}+{max(12, min(y, screen_h - height - 48))}"
         )
         popup.after(60, popup.focus_force)
+        popup.after(80, lambda: apply_window_frame(popup))
 
     def _on_column_toggle(self) -> None:
         visible = {key for key, variable in self._column_vars.items() if variable.get()}
@@ -554,7 +536,6 @@ class FileOrganizerApp(RenameTabMixin, OrganizeTabMixin, DuplicatesTabMixin, His
             self._sort_desc = False
             self._refresh_headings()
             self._render_preview()
-        save_visible_columns(self._visible_columns)
 
     def _reset_columns(self) -> None:
         for key, variable in self._column_vars.items():
@@ -567,6 +548,9 @@ class FileOrganizerApp(RenameTabMixin, OrganizeTabMixin, DuplicatesTabMixin, His
         self._on_column_toggle()
 
     def _close_column_picker(self) -> None:
+        # 勾选过程中只实时应用；点「完成」或关闭弹窗时统一落盘一次。
+        save_visible_columns(self._visible_columns)
+        save_preview_sort(self._sort_column, self._sort_desc)
         popup = self._column_popup
         self._column_popup = None
         if popup is not None and popup.winfo_exists():
@@ -592,17 +576,8 @@ class FileOrganizerApp(RenameTabMixin, OrganizeTabMixin, DuplicatesTabMixin, His
         except OSError:
             return "—"
 
-    @staticmethod
-    def _stat_values(path: Path) -> tuple[int | None, float | None]:
-        """一次 stat 同时取大小和修改时间；取不到时返回 (None, None)。"""
-        try:
-            info = path.stat()
-        except OSError:
-            return None, None
-        return info.st_size, info.st_mtime
-
     def _folder_text(self, path: Path) -> str:
-        """文件所在的文件夹（相对工作目录，根目录显示为「.」）。"""
+        """文件所在的文件夹（相对工作目录，根目录显示为「（根目录）」）。"""
         parent = path.parent
         if self.scan_root is not None:
             try:
@@ -610,7 +585,7 @@ class FileOrganizerApp(RenameTabMixin, OrganizeTabMixin, DuplicatesTabMixin, His
             except ValueError:
                 return str(parent)
             text = str(relative)
-            return text if text not in {"", "."} else "."
+            return text if text not in {"", "."} else "（根目录）"
         return str(parent)
 
     def _current_root(self) -> Path:

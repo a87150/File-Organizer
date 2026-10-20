@@ -1,13 +1,16 @@
+import os
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
 from file_organizer import preferences
+from file_organizer.core import Action, ActionStatus
 from file_organizer.preview import (
     COLUMN_KEYS,
     DEFAULT_VISIBLE,
     PreviewRow,
+    build_action_row,
     file_type_label,
     format_modified,
     natural_key,
@@ -68,6 +71,62 @@ class PreviewHelpersTests(unittest.TestCase):
         self.assertIn("file_type", COLUMN_KEYS)
 
 
+class ActionRowTests(unittest.TestCase):
+    def test_action_row_uses_destination_stat_once(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve()
+            source = root / "source.txt"
+            destination = root / "renamed.txt"
+            source.write_bytes(b"src")
+            destination.write_bytes(b"destination")
+            os.utime(source, (1000, 1000))
+            os.utime(destination, (2000, 2000))
+            action = Action("rename", source, destination)
+
+            def relative(path: Path) -> str:
+                return path.name
+
+            def folder_text(path: Path) -> str:
+                return path.parent.name
+
+            original_stat = Path.stat
+            calls: list[Path] = []
+
+            def counting_stat(path: Path):
+                calls.append(path)
+                return original_stat(path)
+
+            with mock.patch.object(Path, "stat", counting_stat):
+                row = build_action_row(action, root, relative, folder_text)
+            self.assertEqual(len(calls), 1)
+            self.assertEqual(row.size_value, len(b"destination"))
+            self.assertEqual(row.size_text, "11 B")
+            self.assertAlmostEqual(row.modified_ts, 2000, delta=2)
+            self.assertEqual(row.destination, "renamed.txt")
+            self.assertEqual(row.status, "待执行")
+            self.assertEqual(row.tags, ("pending",))
+
+    def test_action_row_falls_back_to_source_when_destination_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve()
+            source = root / "source.txt"
+            source.write_bytes(b"abc")
+            action = Action("move", source, root / "not-created" / "source.txt")
+            row = build_action_row(action, root, lambda path: path.name, lambda path: path.parent.name)
+            self.assertEqual(row.size_value, 3)
+            self.assertIn("not-created", row.destination)
+
+    def test_failed_action_row_tag(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve()
+            source = root / "source.txt"
+            source.write_bytes(b"abc")
+            action = Action("rename", source, root / "target.txt", ActionStatus.FAILED, "目标已存在")
+            row = build_action_row(action, root, lambda path: path.name, lambda path: path.parent.name)
+            self.assertEqual(row.status, "失败")
+            self.assertEqual(row.tags, ("failed",))
+
+
 class PreviewPreferencesTests(unittest.TestCase):
     def test_visible_columns_roundtrip(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -81,6 +140,38 @@ class PreviewPreferencesTests(unittest.TestCase):
                 # 损坏的配置文件回退到默认字段
                 path.write_text("not json", encoding="utf-8")
                 self.assertEqual(preferences.load_visible_columns(), set(DEFAULT_VISIBLE))
+
+    def test_preview_sort_roundtrip_and_invalid_fallback(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "settings.json"
+            with mock.patch.object(preferences, "settings_path", return_value=path):
+                self.assertEqual(preferences.load_preview_sort(), (None, False))
+                preferences.save_preview_sort("size", True)
+                self.assertEqual(preferences.load_preview_sort(), ("size", True))
+                preferences.save_preview_sort("not-a-column", True)
+                self.assertEqual(preferences.load_preview_sort(), (None, False))
+                preferences.save_preview_sort(None)
+                self.assertEqual(preferences.load_preview_sort(), (None, False))
+
+    def test_atomic_save_keeps_old_file_when_replace_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "settings.json"
+            with mock.patch.object(preferences, "settings_path", return_value=path):
+                preferences.save_visible_columns(["source", "size"])
+                with mock.patch.object(preferences.os, "replace", side_effect=OSError("disk full")):
+                    preferences.save_visible_columns(["source", "folder"])
+                self.assertEqual(preferences.load_visible_columns(), {"source", "size"})
+                temp = path.with_name(path.name + ".tmp")
+                self.assertFalse(temp.exists())
+
+    def test_columns_and_sort_are_saved_together(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "settings.json"
+            with mock.patch.object(preferences, "settings_path", return_value=path):
+                preferences.save_visible_columns(["source", "modified"])
+                preferences.save_preview_sort("modified", True)
+                self.assertEqual(preferences.load_visible_columns(), {"source", "modified"})
+                self.assertEqual(preferences.load_preview_sort(), ("modified", True))
 
 
 if __name__ == "__main__":

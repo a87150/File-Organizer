@@ -6,7 +6,7 @@ from tkinter import filedialog, messagebox
 
 import customtkinter as ctk
 
-from .core import CleanupOptions, OrganizeOptions, RenameOptions, SearchOptions, TYPE_GROUPS
+from .core import CleanupOptions, FileEntry, OrganizeOptions, RenameOptions, SearchOptions, STATUS_UNDONE
 from .duplicates import DuplicateOptions, DuplicateResult, order_group_members
 from .preview import PreviewRow, file_type_label, format_modified
 from .utils import format_size
@@ -27,6 +27,13 @@ from .widgets import (
 )
 
 KIND_DISPLAY = {"name": "文件名相似", "size": "大小接近", "hash": "字节相同"}
+CASE_LABELS = (
+    ("保持原样", "keep"),
+    ("小写", "lower"),
+    ("大写", "upper"),
+    ("首字母大写", "title"),
+)
+CASE_VALUES = dict(CASE_LABELS)
 KEEPER_LABELS = (
     ("保留最早修改", "oldest"),
     ("保留最新修改", "newest"),
@@ -78,7 +85,7 @@ class RenameTabMixin:
         self.find_var = tk.StringVar()
         self.replace_var = tk.StringVar()
         self.regex_var = tk.BooleanVar()
-        self.case_var = tk.StringVar(value="keep")
+        self.case_var = tk.StringVar(value=CASE_LABELS[0][0])
         self.counter_var = tk.BooleanVar()
         self.counter_start_var = tk.IntVar(value=1)
         self.counter_width_var = tk.IntVar(value=3)
@@ -90,7 +97,7 @@ class RenameTabMixin:
         hint(rename_box, "新扩展名留空则保留原扩展名，例如填写 pdf 或 .pdf。").grid(row=5, column=0, columnspan=2, sticky="w", pady=(2, 0))
         checkbox(rename_box, "查找内容使用正则表达式", self.regex_var).grid(row=6, column=0, columnspan=2, sticky="w", pady=ROW_PADY)
         label(rename_box, "大小写").grid(row=7, column=0, sticky="w", pady=ROW_PADY)
-        combo(rename_box, variable=self.case_var, values=("keep", "lower", "upper", "title")).grid(row=7, column=1, sticky="ew", pady=ROW_PADY)
+        combo(rename_box, variable=self.case_var, values=tuple(label for label, _ in CASE_LABELS)).grid(row=7, column=1, sticky="ew", pady=ROW_PADY)
         checkbox(rename_box, "添加序号", self.counter_var).grid(row=8, column=0, sticky="w", pady=ROW_PADY)
         counter = ctk.CTkFrame(rename_box, corner_radius=0, fg_color="transparent")
         counter.grid(row=9, column=1, sticky="ew", pady=ROW_PADY)
@@ -122,13 +129,14 @@ class RenameTabMixin:
                 return
             modified_from, modified_to = self._resolve_modified_range()
             options = SearchOptions(name_pattern=self.search_name_var.get(), use_regex=self.search_regex_var.get(), extensions=extensions, min_size_mb=minimum, max_size_mb=maximum, modified_from=modified_from, modified_to=modified_to)
-            matches = self.engine.filter_files(self.files, options)
-            self.matched_files = matches
+            matches = self.engine.filter_files(self.file_entries, options)
+            self.matched_files = [entry.path for entry in matches]
             self.actions = []
             self.execute_btn.configure(state="disabled")
             rows = []
-            for path in matches:
-                size, modified_ts = self._stat_values(path)
+            for entry in matches:
+                path = entry.path
+                size, modified_ts = entry.size, entry.mtime
                 rows.append(
                     PreviewRow(
                         status="匹配",
@@ -158,7 +166,7 @@ class RenameTabMixin:
             messagebox.showinfo("提示", "当前搜索规则没有匹配任何文件。")
             return
         try:
-            options = RenameOptions(prefix=self.prefix_var.get(), suffix=self.suffix_var.get(), find=self.find_var.get(), replace=self.replace_var.get(), use_regex=self.regex_var.get(), case=self.case_var.get(), add_counter=self.counter_var.get(), counter_start=self.counter_start_var.get(), counter_width=self.counter_width_var.get(), new_extension=self.new_extension_var.get())
+            options = RenameOptions(prefix=self.prefix_var.get(), suffix=self.suffix_var.get(), find=self.find_var.get(), replace=self.replace_var.get(), use_regex=self.regex_var.get(), case=CASE_VALUES.get(self.case_var.get(), "keep"), add_counter=self.counter_var.get(), counter_start=self.counter_start_var.get(), counter_width=self.counter_width_var.get(), new_extension=self.new_extension_var.get())
             self._show_actions(self.engine.preview_rename(self.matched_files, options))
         except Exception as exc:
             messagebox.showerror("规则无效", str(exc))
@@ -253,9 +261,8 @@ class HistoryTabMixin:
         self.actions = []
         self.dup_result = None
         self.execute_btn.configure(state="disabled")
-        succeeded = sum(item.status == "已撤销" for item in actions)
-        self.status_var.set(f"撤销完成：成功 {succeeded}，失败 {len(actions) - succeeded}")
-        self._scan()
+        succeeded = sum(item.status == STATUS_UNDONE for item in actions)
+        self.status_var.set(f"撤销完成：成功 {succeeded}，失败 {len(actions) - succeeded}；点击「扫描文件」可刷新列表")
 
 
 class DuplicatesTabMixin:
@@ -269,6 +276,7 @@ class DuplicatesTabMixin:
         self.dup_size_percent_var = tk.StringVar(value="0")
         self.dup_size_diff_var = tk.StringVar(value="0")
         self.dup_hash_var = tk.BooleanVar(value=True)
+        self.dup_workers_var = tk.StringVar(value="4")
         self.dup_min_size_var = tk.StringVar()
         self.dup_max_size_var = tk.StringVar()
         self.dup_result: DuplicateResult | None = None
@@ -293,7 +301,11 @@ class DuplicatesTabMixin:
         entry(size_row, textvariable=self.dup_size_diff_var, width=6).pack(side="left")
         label(size_row, "字节").pack(side="left", padx=4)
 
-        checkbox(find_box, "字节相同（哈希确认，大文件较慢）", self.dup_hash_var).grid(row=2, column=0, columnspan=2, sticky="w", pady=ROW_PADY)
+        hash_row = ctk.CTkFrame(find_box, corner_radius=0, fg_color="transparent")
+        hash_row.grid(row=2, column=0, columnspan=2, sticky="ew", pady=ROW_PADY)
+        checkbox(hash_row, "字节相同（哈希确认，大文件较慢）", self.dup_hash_var).pack(side="left")
+        label(hash_row, "读盘线程").pack(side="left", padx=(16, 4))
+        entry(hash_row, textvariable=self.dup_workers_var, width=3).pack(side="left")
 
         label(find_box, "文件类型").grid(row=3, column=0, sticky="w", pady=ROW_PADY)
         self.dup_type_picker = MultiSelectDropdown(find_box)
@@ -327,6 +339,12 @@ class DuplicatesTabMixin:
             raise ValueError("相似度阈值应在 0 到 1 之间")
         percent = self._optional_float(self.dup_size_percent_var.get(), "大小差异百分比") or 0.0
         diff = self._optional_float(self.dup_size_diff_var.get(), "大小差异字节数") or 0.0
+        try:
+            workers = int(self.dup_workers_var.get().strip())
+        except ValueError as exc:
+            raise ValueError("读盘线程请输入整数") from exc
+        if not 1 <= workers <= 32:
+            raise ValueError("读盘线程应在 1 到 32 之间")
         return DuplicateOptions(
             name_enabled=self.dup_name_var.get(),
             name_threshold=threshold,
@@ -334,9 +352,10 @@ class DuplicatesTabMixin:
             size_tolerance_percent=percent,
             size_tolerance_bytes=int(diff),
             hash_enabled=self.dup_hash_var.get(),
+            workers=workers,
         )
 
-    def _duplicate_candidates(self) -> list[Path]:
+    def _duplicate_candidates(self) -> list[FileEntry]:
         minimum = self._optional_float(self.dup_min_size_var.get(), "最小文件大小")
         maximum = self._optional_float(self.dup_max_size_var.get(), "最大文件大小")
         if minimum is not None and maximum is not None and minimum > maximum:
@@ -346,7 +365,7 @@ class DuplicatesTabMixin:
         if total and not selected:
             raise ValueError("请至少选择一种文件类型")
         extensions = () if len(selected) == total else selected
-        return self.engine.filter_files(self.files, SearchOptions(extensions=extensions, min_size_mb=minimum, max_size_mb=maximum))
+        return self.engine.filter_files(self.file_entries, SearchOptions(extensions=extensions, min_size_mb=minimum, max_size_mb=maximum))
 
     def _current_match_label(self) -> str:
         """当前勾选的查找方式（叠加）文本，用于结果里的分组标题。"""
@@ -404,11 +423,11 @@ class DuplicatesTabMixin:
                 )
             )
             size_of = dict(zip(group.members, group.sizes))
-            for position, member in enumerate(order_group_members(group.members, keeper)):
+            for position, member in enumerate(order_group_members(group.members, keeper, group.mtime_of)):
                 status = "保留" if position == 0 else "候选"
                 tag = ("keep",) if position == 0 else ("candidate",)
                 size = size_of.get(member, 0)
-                _, modified_ts = self._stat_values(member)
+                modified_ts = group.mtime_of.get(member)
                 rows.append(
                     PreviewRow(
                         status=status,

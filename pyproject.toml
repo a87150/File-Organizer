@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "file-organizer"
-version = "1.1.0"
+version = "1.2.5"
 description = "Windows 桌面文件整理工具：批量重命名、分类整理、查找重复与相似文件"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -15,11 +15,34 @@ classifiers = [
     "Environment :: Win32 (MS Windows)",
     "Operating System :: Microsoft :: Windows",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Desktop Environment :: File Managers",
     "Topic :: Utilities",
 ]
 urls = { Repository = "https://github.com/a87150/File-Organizer" }
-dependencies = ["customtkinter>=5.2"]
+dependencies = ["customtkinter>=5.2,<6"]
+
+[project.optional-dependencies]
+dev = ["ruff", "mypy", "pyinstaller"]
 
 [tool.setuptools]
 packages = ["file_organizer"]
+
+[tool.setuptools.package-data]
+file_organizer = ["assets/*.ico"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
+
+[tool.mypy]
+python_version = "3.10"
+mypy_path = "."
+warn_unused_ignores = true

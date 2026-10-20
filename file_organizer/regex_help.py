@@ -10,6 +10,7 @@ import tkinter as tk
 import customtkinter as ctk
 
 from .theme import ACCENT, APP_BG, BORDER, CARD_BG, SCROLL_THUMB, SCROLL_THUMB_ACTIVE, TEXT_PRIMARY, TEXT_SECONDARY
+from .theme import apply_window_frame
 from .theme import font as ui_font
 from .widgets import RoundedButton, SegmentedControl, hint, label, section
 
@@ -126,6 +127,7 @@ class RegexHelpWindow(ctk.CTkToplevel):
 
         self.bind("<Escape>", lambda _event: self.destroy())
         self.after(80, self._focus_self)
+        self.after(100, lambda: apply_window_frame(self))
 
     def _focus_self(self) -> None:
         try:
@@ -143,7 +145,11 @@ class RegexHelpWindow(ctk.CTkToplevel):
             page.pack_forget()
         self._pages[index].pack(fill="both", expand=True, padx=4, pady=4)
         self.selector.select(index)
-        self.body._parent_canvas.yview_moveto(0)
+        # 依赖 CTk 内部结构（_parent_canvas），升级需人工回归；缺失时只是不回到顶部。
+        try:
+            self.body._parent_canvas.yview_moveto(0)
+        except AttributeError:
+            pass
 
     # ------------------------------------------------------------------ 页面内容
 
@@ -188,17 +194,33 @@ class RegexHelpWindow(ctk.CTkToplevel):
             field.configure(state="readonly")
             field.pack(side="left", fill="x", expand=True)
             self._template_fields.append(field)
-            RoundedButton(
+            copy_button = RoundedButton(
                 row,
                 text="复制",
                 variant="secondary",
                 padx=12,
                 pady=6,
                 height=32,
-                command=lambda value=pattern: self._copy(value),
-            ).pack(side="left", padx=(8, 0))
+            )
+            copy_button.configure(command=lambda value=pattern, button=copy_button: self._copy(value, button))
+            copy_button.pack(side="left", padx=(8, 0))
             hint(card, description, wraplength=600).pack(anchor="w", pady=(6, 0))
 
-    def _copy(self, value: str) -> None:
+    def _copy(self, value: str, button: ctk.CTkButton | None = None) -> None:
         self.clipboard_clear()
         self.clipboard_append(value)
+        if button is None:
+            return
+        try:
+            button.configure(text="已复制 ✓")
+            self.after(800, lambda: RegexHelpWindow._restore_copy_button(button))
+        except tk.TclError:
+            pass
+
+    @staticmethod
+    def _restore_copy_button(button: ctk.CTkButton) -> None:
+        try:
+            if button.winfo_exists():
+                button.configure(text="复制")
+        except tk.TclError:
+            pass

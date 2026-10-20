@@ -4,11 +4,21 @@ import json
 import os
 import tempfile
 import unittest
+from difflib import SequenceMatcher
 from pathlib import Path
+from unittest import mock
 
 from file_organizer import cli
 from file_organizer.core import CleanupOptions, OrganizerEngine
-from file_organizer.duplicates import DuplicateGroup, DuplicateOptions, find_size_groups, normalize_stem
+from file_organizer.duplicates import (
+    DSU,
+    DuplicateGroup,
+    DuplicateOptions,
+    find_name_groups,
+    find_size_groups,
+    normalize_stem,
+    order_group_members,
+)
 
 
 class DuplicateFinderTests(unittest.TestCase):
@@ -164,6 +174,98 @@ class DuplicateFinderTests(unittest.TestCase):
         self.assertEqual(undone[0].status, "已撤销")
         self.assertTrue(first.exists())
         self.assertTrue(second.exists())
+
+    def test_duplicate_groups_cache_mtimes(self):
+        first = self.make_file("cached1.bin", b"same")
+        second = self.make_file("cached2.bin", b"same")
+        os.utime(first, (1000, 1000))
+        os.utime(second, (2000, 2000))
+        result = self.engine.find_duplicates(
+            [first, second],
+            DuplicateOptions(name_enabled=False, size_enabled=False, hash_enabled=True),
+        )
+        self.assertEqual(len(result.groups), 1)
+        cached = result.groups[0].mtime_of
+        self.assertAlmostEqual(cached[first], 1000, delta=2)
+        self.assertAlmostEqual(cached[second], 2000, delta=2)
+
+    def test_keeper_switch_uses_cached_mtimes_without_stat(self):
+        first = self.make_file("old.bin", b"same")
+        second = self.make_file("new.bin", b"same")
+        group = DuplicateGroup(
+            "hash",
+            (first, second),
+            (first.stat().st_size, second.stat().st_size),
+            {first: 1000.0, second: 2000.0},
+        )
+        with mock.patch.object(Path, "stat", side_effect=AssertionError("不应再次 stat")):
+            oldest = order_group_members(group.members, "oldest", group.mtime_of)
+            newest = order_group_members(group.members, "newest", group.mtime_of)
+        self.assertEqual(oldest[0], first)
+        self.assertEqual(newest[0], second)
+
+    def test_parallel_hash_matches_single_thread(self):
+        files = []
+        for index in range(4):
+            files.append(self.make_file(f"same_{index}.bin", b"same-content" * 100))
+        for index in range(2):
+            files.append(self.make_file(f"other_{index}.bin", b"other-content" * 100))
+        different = self.make_file("different.bin", b"different" * 100)
+        options = DuplicateOptions(name_enabled=False, size_enabled=False, hash_enabled=True)
+        single = self.engine.find_duplicates(
+            files + [different],
+            DuplicateOptions(**{**options.__dict__, "workers": 1}),
+        )
+        parallel = self.engine.find_duplicates(
+            files + [different],
+            DuplicateOptions(**{**options.__dict__, "workers": 4}),
+        )
+        self.assertEqual(
+            {frozenset(group.members) for group in single.groups},
+            {frozenset(group.members) for group in parallel.groups},
+        )
+
+    def test_name_groups_optimized_matches_reference(self):
+        # 10,000 个文件名基准（每 5 个同 stem 副本，阈值 0.9，Windows / Python 3.14）：
+        # 优化后约 8.5s，优化前全量两两比较约 235.5s，结果完全一致（约 27.8x）。
+        names = [
+            "alpha.mp4",
+            "alpha - 副本.mp4",
+            "alphb.mp4",
+            "movie_01.mkv",
+            "movie_02.mkv",
+            "movie_01 (1).mkv",
+            "photocopy.jpg",
+            "photo.jpg",
+            "completely-different.txt",
+            "completely-different (1).txt",
+        ]
+        paths = [self.make_file(f"sub{index}/{name}") for index, name in enumerate(names)]
+        threshold = 0.65
+        actual = {frozenset(group) for group in find_name_groups(paths, threshold)}
+
+        # 参考实现：与优化前一致的全量两两比较。
+        dsu = DSU(paths)
+        for i, first in enumerate(paths):
+            for second in paths[i + 1:]:
+                if SequenceMatcher(None, normalize_stem(first), normalize_stem(second)).ratio() >= threshold:
+                    dsu.union(first, second)
+        expected = {frozenset(group) for group in dsu.groups()}
+        self.assertEqual(actual, expected)
+
+    def test_cli_rejects_invalid_numeric_options(self):
+        cases = [
+            (["--name-thresh", "0"], "相似度阈值"),
+            (["--name-thresh", "1.5"], "相似度阈值"),
+            (["--size-percent", "-1"], "不能为负数"),
+        ]
+        for extra, message in cases:
+            with self.subTest(extra=extra):
+                stderr = io.StringIO()
+                with contextlib.redirect_stderr(stderr), self.assertRaises(SystemExit) as raised:
+                    cli.main([str(self.root), *extra])
+                self.assertEqual(raised.exception.code, 2)
+                self.assertIn(message, stderr.getvalue())
 
     def test_cli_reports_duplicates_and_writes_json(self):
         self.make_file("video1.mp4", b"z" * 2048)

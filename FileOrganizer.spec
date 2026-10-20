@@ -5,7 +5,7 @@ a = Analysis(
     ["run.py"],
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=[("file_organizer/assets/app.ico", "file_organizer/assets")],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
@@ -34,7 +34,7 @@ a = Analysis(
         "html",
         "multiprocessing",
         "asyncio",
-        "concurrent",
+        # 哈希阶段使用 concurrent.futures.ThreadPoolExecutor，不能排除 concurrent。
         # 以下模块只被 pathlib 的 URI 功能间接引用，程序本身不用网络/SSL；
         # hashlib 会退回内置的 _sha256 实现，可省掉约 7 MB 的 OpenSSL。
         "ssl",
@@ -60,6 +60,7 @@ exe = EXE(
     upx=False,
     console=False,
     disable_windowed_traceback=False,
+    icon=["file_organizer/assets/app.ico"],
 )
 coll = COLLECT(
     exe,
