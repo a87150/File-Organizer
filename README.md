@@ -80,9 +80,10 @@ docs/              详细用法与常见问题
 
 ```powershell
 python -m unittest discover -v
+python -m mypy file_organizer/core.py file_organizer/duplicates.py file_organizer/preview.py file_organizer/utils.py file_organizer/preferences.py file_organizer/cli.py
 ```
 
-覆盖扫描、筛选、重命名、分类、正则提取、执行、撤销、查重与清理往返、预览字段排序、设置持久化以及 CTk 私有 API 降级。
+覆盖扫描、筛选、重命名、分类、正则提取、执行、撤销、查重与清理往返、预览字段排序、设置持久化以及 CTk 私有 API 降级。CI 还会对核心模块运行 `mypy` 类型检查。
 
 ### 打包
 

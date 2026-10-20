@@ -570,12 +570,6 @@ class FileOrganizerApp(RenameTabMixin, OrganizeTabMixin, DuplicatesTabMixin, His
                 pass
         return str(path)
 
-    def _file_size_text(self, path: Path) -> str:
-        try:
-            return format_size(path.stat().st_size)
-        except OSError:
-            return "—"
-
     def _folder_text(self, path: Path) -> str:
         """文件所在的文件夹（相对工作目录，根目录显示为「（根目录）」）。"""
         parent = path.parent

@@ -15,7 +15,6 @@ from .duplicates import (
     DuplicateGroup,
     DuplicateOptions,
     DuplicateResult,
-    find_duplicates as find_duplicates_paths,
     find_duplicates_entries,
     order_group_members,
 )
@@ -307,20 +306,21 @@ class OrganizerEngine:
         progress=None,
         cancelled=None,
     ) -> DuplicateResult:
-        items = list(files)
-        if items and all(isinstance(item, FileEntry) for item in items):
-            entries: list[tuple[Path, int, float]] = []
-            for item in items:
-                if item.size is None or item.mtime is None:
-                    try:
-                        info = item.path.stat()
-                    except OSError:
-                        continue
-                    entries.append((item.path, info.st_size, info.st_mtime))
-                else:
-                    entries.append((item.path, item.size, item.mtime))
-            return find_duplicates_entries(entries, options, progress=progress, cancelled=cancelled)
-        return find_duplicates_paths(items, options, progress=progress, cancelled=cancelled)
+        # 逐项归一化，允许 FileEntry 与 Path 混用；缓存缺失时再补一次 stat。
+        entries: list[tuple[Path, int, float]] = []
+        for item in files:
+            if isinstance(item, FileEntry):
+                path, size, mtime = item.path, item.size, item.mtime
+            else:
+                path, size, mtime = item, None, None
+            if size is None or mtime is None:
+                try:
+                    info = path.stat()
+                except OSError:
+                    continue
+                size, mtime = info.st_size, info.st_mtime
+            entries.append((path, int(size), float(mtime)))
+        return find_duplicates_entries(entries, options, progress=progress, cancelled=cancelled)
 
     def preview_duplicate_cleanup(self, groups: Iterable[DuplicateGroup], root: Path, options: CleanupOptions) -> list[Action]:
         """把每组“保留”以外的文件规划为移动到 根目录/重复文件/组N/ 的 Action。"""
@@ -398,6 +398,7 @@ class OrganizerEngine:
         for record in reversed(records):
             current = Path(record["destination"])
             original = Path(record["source"])
+            operation: Literal["rename", "move"] = "rename" if record["operation"] == "rename" else "move"
             try:
                 if not is_inside(current, allowed_root) or not is_inside(original, allowed_root):
                     raise PermissionError("日志中的路径不在日志所在的工作目录内，已拒绝撤销")
@@ -407,9 +408,9 @@ class OrganizerEngine:
                 if original.exists():
                     raise FileExistsError("原位置已有同名文件")
                 shutil.move(str(current), str(original))
-                results.append(Action(record["operation"], current, original, ActionStatus.UNDONE))
+                results.append(Action(operation, current, original, ActionStatus.UNDONE))
             except Exception as exc:
-                results.append(Action(record["operation"], current, original, ActionStatus.FAILED, str(exc)))
+                results.append(Action(operation, current, original, ActionStatus.FAILED, str(exc)))
         return results
 
     @staticmethod
@@ -466,9 +467,9 @@ class OrganizerEngine:
         if options.mode == "extension":
             return suffix[1:].upper() if suffix else "无扩展名"
         if options.mode == "type":
-            for group, extensions in TYPE_GROUPS.items():
+            for category, extensions in TYPE_GROUPS.items():
                 if suffix in extensions:
-                    return group
+                    return category
             return "其他" if options.include_other else None
         if options.mode == "name":
             lowered = path.stem.casefold()
@@ -480,8 +481,8 @@ class OrganizerEngine:
             match = re.search(options.extract_pattern, path.stem)
             if not match:
                 return "其他" if options.include_other else None
-            group: int | str = int(options.extract_group) if options.extract_group.isdigit() else options.extract_group
-            extracted = match.group(group)
+            capture: int | str = int(options.extract_group) if options.extract_group.isdigit() else options.extract_group
+            extracted = match.group(capture)
             return extracted.strip() if extracted and extracted.strip() else ("其他" if options.include_other else None)
         stat = path.stat()
         if options.mode == "date":

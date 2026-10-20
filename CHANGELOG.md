@@ -2,6 +2,12 @@
 
 本项目遵循语义化版本（SemVer）。
 
+## 1.2.6 — 2026-10-20
+
+- 删除 `app.py` 中已无调用方的 `_file_size_text()`。
+- `OrganizerEngine.find_duplicates()` 改为逐项归一化，支持 `FileEntry` 与 `Path` 混用，避免混合列表落入旧 Path 分支后触发 `AttributeError`。
+- CI 增加 `mypy` 类型检查（core / duplicates / preview / utils / preferences / CLI），核心代码同步修正类型标注。
+
 ## 1.2.5 — 2026-10-20
 
 安全性与确定性修复：

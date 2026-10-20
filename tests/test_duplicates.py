@@ -9,7 +9,7 @@ from pathlib import Path
 from unittest import mock
 
 from file_organizer import cli
-from file_organizer.core import CleanupOptions, OrganizerEngine
+from file_organizer.core import CleanupOptions, FileEntry, OrganizerEngine
 from file_organizer.duplicates import (
     DSU,
     DuplicateGroup,
@@ -111,6 +111,20 @@ class DuplicateFinderTests(unittest.TestCase):
         result = self.engine.find_duplicates([first, big, peer], DuplicateOptions(name_threshold=0.75))
         self.assertEqual(len(result.groups), 1)
         self.assertEqual(set(result.groups[0].members), {first, peer})
+
+    def test_mixed_file_entries_and_paths(self):
+        # 回归：FileEntry 与 Path 混用时不能落入只接受 Path 的旧回退分支。
+        first = self.make_file("mixed_a.bin", b"same")
+        second = self.make_file("mixed_b.bin", b"same")
+        info = second.stat()
+        mixed = [first, FileEntry(second, info.st_size, info.st_mtime)]
+        result = self.engine.find_duplicates(
+            mixed,
+            DuplicateOptions(name_enabled=False, size_enabled=True, hash_enabled=False),
+        )
+        self.assertEqual(result.files_scanned, 2)
+        self.assertEqual(len(result.groups), 1)
+        self.assertEqual(set(result.groups[0].members), {first, second})
 
     def test_size_diameter_trim(self):
         # 链式合并（100≈105≈111）不应把大小差距超过容差的文件并进同一组
