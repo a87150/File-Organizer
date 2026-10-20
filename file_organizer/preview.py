@@ -16,7 +16,7 @@ PREVIEW_COLUMNS: tuple[tuple[str, str, int, str], ...] = (
     ("source", "原文件", 190, "w"),
     ("size", "大小", 72, "e"),
     ("file_type", "类型", 90, "w"),
-    ("modified", "修改时间", 132, "w"),
+    ("modified", "修改时间", 145, "w"),
     ("folder", "所在文件夹", 160, "w"),
     ("destination", "目标位置", 170, "w"),
 )
