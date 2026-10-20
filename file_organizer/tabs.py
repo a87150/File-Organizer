@@ -8,6 +8,7 @@ import customtkinter as ctk
 
 from .core import CleanupOptions, OrganizeOptions, RenameOptions, SearchOptions, TYPE_GROUPS
 from .duplicates import DuplicateOptions, DuplicateResult, order_group_members
+from .preview import PreviewRow, file_type_label, format_modified
 from .utils import format_size
 from .widgets import (
     MultiSelectDropdown,
@@ -125,7 +126,22 @@ class RenameTabMixin:
             self.matched_files = matches
             self.actions = []
             self.execute_btn.configure(state="disabled")
-            rows = [(("匹配", self._relative(path), "", self._file_size_text(path)), ("match",), None, None) for path in matches]
+            rows = []
+            for path in matches:
+                size, modified_ts = self._stat_values(path)
+                rows.append(
+                    PreviewRow(
+                        status="匹配",
+                        source=self._relative(path),
+                        file_type=file_type_label(path),
+                        size_text=format_size(size) if size is not None else "—",
+                        modified=format_modified(modified_ts),
+                        folder=self._folder_text(path),
+                        size_value=size if size is not None else -1,
+                        modified_ts=modified_ts or 0.0,
+                        tags=("match",),
+                    )
+                )
             self._populate_tree(rows)
             note = self._truncation_note(len(rows))
             self.status_var.set(f"搜索完成：{len(matches)} / {len(self.files)} 个文件匹配{note}")
@@ -376,12 +392,37 @@ class DuplicatesTabMixin:
         match_label = self.dup_match_label or "重复/相似文件"
         rows = []
         for index, group in enumerate(result.groups, 1):
-            rows.append((("分组", f"{match_label} · 第 {index} 组 · {len(group.members)} 个文件", "", format_size(group.total_size)), (f"dup-{group.kind}",), None, None))
+            rows.append(
+                PreviewRow(
+                    status="分组",
+                    source=f"{match_label} · 第 {index} 组 · {len(group.members)} 个文件",
+                    size_text=format_size(group.total_size),
+                    size_value=group.total_size,
+                    tags=(f"dup-{group.kind}",),
+                    group=index,
+                    is_header=True,
+                )
+            )
             size_of = dict(zip(group.members, group.sizes))
             for position, member in enumerate(order_group_members(group.members, keeper)):
                 status = "保留" if position == 0 else "候选"
                 tag = ("keep",) if position == 0 else ("candidate",)
-                rows.append(((status, self._relative(member), "", format_size(size_of.get(member, 0))), tag, None, None))
+                size = size_of.get(member, 0)
+                _, modified_ts = self._stat_values(member)
+                rows.append(
+                    PreviewRow(
+                        status=status,
+                        source=self._relative(member),
+                        file_type=file_type_label(member),
+                        size_text=format_size(size),
+                        modified=format_modified(modified_ts),
+                        folder=self._folder_text(member),
+                        size_value=size,
+                        modified_ts=modified_ts or 0.0,
+                        tags=tag,
+                        group=index,
+                    )
+                )
         self._populate_tree(rows)
         reclaim = sum(group.reclaimable_bytes for group in result.groups)
         note = self._truncation_note(len(rows))
